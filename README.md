@@ -271,17 +271,17 @@ curl -X POST https://nora-apatsev.duckdns.org/api/tokens \
     "ttl_days": 90,
     "description": "CI/CD pipeline token"
   }'
-# {"token": "nra_138a351156fa40b0b536ba429eb8d72b...", "expires_in_days": 90}
+# {"token": "nra_82ff3b514d6944a88278aa200da6ca0c...", "expires_in_days": 90}
 
 # проверка токена
-curl -H "Authorization: Bearer nra_138a351156fa40b0b536ba429eb8d72b" \
+curl -H "Authorization: Bearer nra_82ff3b514d6944a88278aa200da6ca0c" \
   https://nora-apatsev.duckdns.org/v2/_catalog
 
 # Использовать токен для npm
-npm config set //nora-apatsev.duckdns.org:_authToken nra_138a351156fa40b0b536ba429eb8d72b
+npm config set //nora-apatsev.duckdns.org:_authToken nra_82ff3b514d6944a88278aa200da6ca0c
 
 # Docker login с токеном (токен в качестве пароля, любое имя пользователя)
-docker login nora-apatsev.duckdns.org -u token -p nra_138a351156fa40b0b536ba429eb8d72b
+docker login nora-apatsev.duckdns.org -u token -p nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
 ## Использование: примеры для каждого формата
@@ -320,7 +320,7 @@ npm install lodash
 ```bash
 cd test-npm-pkg
 
-npm config set //nora-apatsev.duckdns.org/npm/:_authToken nra_138a351156fa40b0b536ba429eb8d72b
+npm config set //nora-apatsev.duckdns.org/npm/:_authToken nra_82ff3b514d6944a88278aa200da6ca0c
 
 # Публикуем (запускается из директории test-npm-pkg)
 npm publish --registry https://nora-apatsev.duckdns.org/npm/
@@ -360,7 +360,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # Установка пакета через NORA (с токеном)
-pip install --index-url https://token:nra_138a351156fa40b0b536ba429eb8d72b@nora-apatsev.duckdns.org/simple/ flask
+pip install --index-url https://token:nra_82ff3b514d6944a88278aa200da6ca0c@nora-apatsev.duckdns.org/simple/ flask
 ```
 
 Пример минимального Python-пакета для публикации (директория `python-pkg-example` уже есть в репозитории):
@@ -380,7 +380,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install build twine
 python -m build
-twine upload --repository-url https://token:nra_138a351156fa40b0b536ba429eb8d72b@nora-apatsev.duckdns.org/simple/ dist/*
+twine upload --repository-url https://token:nra_82ff3b514d6944a88278aa200da6ca0c@nora-apatsev.duckdns.org/simple/ dist/*
 ```
 
 Для постоянной настройки создайте `~/.pip/pip.conf`:
@@ -523,16 +523,16 @@ go mod init test-go-pkg
 
 ```bash
 # Глобально через go env (рекомендуется)
-go env -w GOPROXY=https://token:nra_138a351156fa40b0b536ba429eb8d72b@nora-apatsev.duckdns.org/go,direct
+go env -w GOPROXY=https://token:nra_82ff3b514d6944a88278aa200da6ca0c@nora-apatsev.duckdns.org/go,direct
 
 # Или через переменную окружения
-export GOPROXY=https://token:nra_138a351156fa40b0b536ba429eb8d72b@nora-apatsev.duckdns.org/go,direct
+export GOPROXY=https://token:nra_82ff3b514d6944a88278aa200da6ca0c@nora-apatsev.duckdns.org/go,direct
 ```
 
 **Вариант 2: Через .netrc (рекомендуется для CI/CD)**
 
 ```bash
-echo "machine nora-apatsev.duckdns.org login token password nra_138a351156fa40b0b536ba429eb8d72b" >> ~/.netrc
+echo "machine nora-apatsev.duckdns.org login token password nra_82ff3b514d6944a88278aa200da6ca0c" >> ~/.netrc
 chmod 600 ~/.netrc
 
 go env -w GOPROXY=https://nora-apatsev.duckdns.org/go,direct
@@ -582,10 +582,10 @@ EOF
 
 ```bash
 # Вариант 1: через stdin (рекомендуется для CI/CD)
-echo "Bearer nra_138a351156fa40b0b536ba429eb8d72b" | cargo login --registry nora
+echo "Bearer nra_82ff3b514d6944a88278aa200da6ca0c" | cargo login --registry nora
 
 # Вариант 2: через переменную окружения
-export CARGO_REGISTRIES_NORA_TOKEN="Bearer nra_138a351156fa40b0b536ba429eb8d72b"
+export CARGO_REGISTRIES_NORA_TOKEN="Bearer nra_82ff3b514d6944a88278aa200da6ca0c"
 ```
 
 > **Важно:** префикс `Bearer ` обязателен — без него Cargo выдаст ошибку `the token does not include an authentication scheme`.
@@ -677,7 +677,7 @@ bundle install
 
 ```bash
 # Авторизация (токен используется как пароль, любое имя пользователя)
-curl -u "token:nra_138a351156fa40b0b536ba429eb8d72b" \
+curl -u "token:nra_82ff3b514d6944a88278aa200da6ca0c" \
   https://nora-apatsev.duckdns.org/api/v1/gems
 
 # Собираем гем из .gemspec
@@ -686,7 +686,7 @@ gem build mygem.gemspec
 # Публикуем
 gem push mygem-0.1.0.gem \
   --host https://nora-apatsev.duckdns.org/gems/ \
-  --key nra_138a351156fa40b0b536ba429eb8d72b
+  --key nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
 Пример минимального тестового гема:
@@ -758,14 +758,14 @@ NORA поддерживает NuGet V3 API — проксирует запрос
 dotnet nuget add source https://nora-apatsev.duckdns.org/nuget/v3/index.json \
   -n nora \
   -u token \
-  -p nra_138a351156fa40b0b536ba429eb8d72b \
+  -p nra_82ff3b514d6944a88278aa200da6ca0c \
   --store-password-in-clear-text
 
 # Или через nuget CLI
 nuget source add -Name nora \
   -Source https://nora-apatsev.duckdns.org/nuget/v3/index.json \
   -UserName token \
-  -Password nra_138a351156fa40b0b536ba429eb8d72b
+  -Password nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
 Или через файл `nuget.config` в проекте:
@@ -779,7 +779,7 @@ nuget source add -Name nora \
   <packageSourceCredentials>
     <nora>
       <add key="Username" value="token" />
-      <add key="ClearTextPassword" value="nra_138a351156fa40b0b536ba429eb8d72b" />
+      <add key="ClearTextPassword" value="nra_82ff3b514d6944a88278aa200da6ca0c" />
     </nora>
   </packageSourceCredentials>
 </configuration>
@@ -834,7 +834,7 @@ dotnet pack -c Release
 # Публикуем в NORA
 dotnet nuget push bin/Release/TestNugetPkg.0.1.0.nupkg \
   --source https://nora-apatsev.duckdns.org/nuget/v3/index.json \
-  --api-key nra_138a351156fa40b0b536ba429eb8d72b
+  --api-key nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
 #### Установка из NORA
@@ -853,7 +853,7 @@ NORA поддерживает Ansible Galaxy API — проксирует зап
 # Установка коллекции из NORA (с аутентификацией)
 ansible-galaxy collection install community.general \
   -s https://nora-apatsev.duckdns.org/ansible/ \
-  --token nra_138a351156fa40b0b536ba429eb8d72b
+  --token nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
 Для постоянной настройки добавьте сервер в `ansible.cfg`:
@@ -864,7 +864,7 @@ server_list = nora
 
 [galaxy_server.nora]
 url = https://nora-apatsev.duckdns.org/ansible/
-token = nra_138a351156fa40b0b536ba429eb8d72b
+token = nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
 После этого все команды `ansible-galaxy` будут использовать NORA:
@@ -932,7 +932,7 @@ ansible-galaxy collection build
 # Публикуем в NORA
 ansible-galaxy collection publish test-hello_nora-0.1.0.tar.gz \
   --server https://nora-apatsev.duckdns.org/ansible/ \
-  --token nra_138a351156fa40b0b536ba429eb8d72b
+  --token nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
 #### Публикация роли
@@ -945,7 +945,7 @@ cd test-hello-nora
 # Публикуем роль в NORA
 ansible-galaxy role import \
   --server https://nora-apatsev.duckdns.org/ansible/ \
-  --token nra_138a351156fa40b0b536ba429eb8d72b
+  --token nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
 ### Conan (C/C++)
@@ -959,7 +959,7 @@ NORA поддерживает Conan V2 API — проксирует запрос
 conan remote add nora https://nora-apatsev.duckdns.org/conan
 
 # Авторизация
-conan remote login nora -p nra_138a351156fa40b0b536ba429eb8d72b
+conan remote login nora -p nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
 Для постоянной настройки используйте `global.conf`:
@@ -1178,7 +1178,7 @@ EOF
 cd test-pub-pkg
 
 # Авторизация через токен (создаётся на pub.dev)
-export PUB_TOKEN=nra_138a351156fa40b0b536ba429eb8d72b
+export PUB_TOKEN=nra_82ff3b514d6944a88278aa200da6ca0c
 
 # Публикуем в NORA
 dart pub publish --server=https://nora-apatsev.duckdns.org/pub
