@@ -386,16 +386,16 @@ python3 -m pip install --index-url https://token:nra_82ff3b514d6944a88278aa200da
 Пример минимального Python-пакета для публикации:
 
 ```
-python-pkg-example/
+test-python-pkg/
 ├── pyproject.toml
 ├── src/
-│   └── python_pkg_example/
+│   └── test_python_pkg/
 │       └── __init__.py
 └── dist/                # создаётся автоматически при python -m build
 ```
 
 ```bash
-cd python-pkg-example
+cd test-python-pkg
 python3 -m venv .venv
 source .venv/bin/activate
 pip install build twine

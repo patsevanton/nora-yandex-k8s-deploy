@@ -49,7 +49,7 @@ package-lock.json
 users.htpasswd
 package.json
 test-npm-pkg/.npmrc
-python-pkg-example/dist/*
+test-python-pkg/dist/*
 test-maven-pkg/target/
 test-helm-pkg/*
 test-cargo-pkg/*
