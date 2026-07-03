@@ -18,6 +18,10 @@ resource "yandex_storage_bucket" "nora_storage" {
   access_key = yandex_iam_service_account_static_access_key.sa_storage_admin_static_key.access_key
   secret_key = yandex_iam_service_account_static_access_key.sa_storage_admin_static_key.secret_key
   bucket     = "nora-storage-anton-patsev"
+
+  depends_on = [
+    yandex_resourcemanager_folder_iam_member.sa_storage_admin_permissions,
+  ]
 }
 
 resource "local_file" "secret_for_bucket" {

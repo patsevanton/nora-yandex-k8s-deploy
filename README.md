@@ -320,7 +320,7 @@ npm install lodash
 ```bash
 mkdir -p test-npm-pkg
 
-cat <<'EOF' > test-npm-pkg/package.json
+cat <<EOF >  test-npm-pkg/package.json
 {
   "name": "@test/hello-world",
   "version": "1.0.0",
@@ -329,7 +329,7 @@ cat <<'EOF' > test-npm-pkg/package.json
 }
 EOF
 
-cat <<'EOF' > test-npm-pkg/index.js
+cat <<EOF >  test-npm-pkg/index.js
 module.exports = function hello() {
   return "Hello from Nora registry!";
 };
@@ -426,7 +426,7 @@ test-maven-pkg/
 Создайте `pom.xml` с описанием артефакта и адресом репозитория:
 
 ```bash
-cat <<'EOF' > test-maven-pkg/pom.xml
+cat <<EOF >  test-maven-pkg/pom.xml
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -480,7 +480,7 @@ EOF
 
 ```bash
 mkdir -p test-maven-pkg/src/main/java/com/example
-cat <<'EOF' > test-maven-pkg/src/main/java/com/example/HelloNora.java
+cat <<EOF >  test-maven-pkg/src/main/java/com/example/HelloNora.java
 package com.example;
 
 public class HelloNora {
@@ -588,7 +588,7 @@ mkdir -p test-cargo-pkg/.cargo test-cargo-pkg/src
 Создайте `.cargo/config.toml` с настройками реестра:
 
 ```bash
-cat <<'EOF' > test-cargo-pkg/.cargo/config.toml
+cat <<EOF >  test-cargo-pkg/.cargo/config.toml
 [registries.nora]
 index = "sparse+https://nora-apatsev.duckdns.org/cargo/"
 
@@ -616,7 +616,7 @@ export CARGO_REGISTRIES_NORA_TOKEN="Bearer nra_82ff3b514d6944a88278aa200da6ca0c"
 Создайте `Cargo.toml` с описанием пакета:
 
 ```bash
-cat <<'EOF' > test-cargo-pkg/Cargo.toml
+cat <<EOF >  test-cargo-pkg/Cargo.toml
 [package]
 name = "test-cargo-pkg"
 version = "0.1.0"
@@ -628,7 +628,7 @@ EOF
 Создайте исходный файл `src/lib.rs`:
 
 ```bash
-cat <<'EOF' > test-cargo-pkg/src/lib.rs
+cat <<EOF >  test-cargo-pkg/src/lib.rs
 pub fn hello() -> &'static str {
     "Hello from Nora!"
 }
@@ -681,7 +681,7 @@ bundle config mirror.https://rubygems.org https://nora-apatsev.duckdns.org/gems/
 
 # Или через .bundle/config в проекте
 mkdir -p .bundle
-cat <<'EOF' > .bundle/config
+cat <<EOF >  .bundle/config
 ---
 BUNDLE_MIRROR__HTTPS://RUBYGEMS__ORG/: "https://nora-apatsev.duckdns.org/gems/"
 EOF
@@ -723,7 +723,7 @@ test-ruby-pkg/
 
 ```bash
 mkdir -p test-ruby-pkg/lib
-cat <<'EOF' > test-ruby-pkg/test-ruby-pkg.gemspec
+cat <<EOF >  test-ruby-pkg/test-ruby-pkg.gemspec
 Gem::Specification.new do |s|
   s.name        = "test-ruby-pkg"
   s.version     = "0.1.0"
@@ -737,7 +737,7 @@ Gem::Specification.new do |s|
 end
 EOF
 
-cat <<'EOF' > test-ruby-pkg/lib/test_ruby_pkg.rb
+cat <<EOF >  test-ruby-pkg/lib/test_ruby_pkg.rb
 module TestRubyPkg
   def self.hello
     "Hello from NORA!"
@@ -745,7 +745,7 @@ module TestRubyPkg
 end
 EOF
 
-cat <<'EOF' > test-ruby-pkg/Gemfile
+cat <<EOF >  test-ruby-pkg/Gemfile
 source "https://nora-apatsev.duckdns.org/gems/"
 gemspec
 EOF
@@ -825,7 +825,7 @@ test-nuget-pkg/
 
 ```bash
 mkdir -p test-nuget-pkg
-cat <<'EOF' > test-nuget-pkg/TestNugetPkg.csproj
+cat <<EOF >  test-nuget-pkg/TestNugetPkg.csproj
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -837,7 +837,7 @@ cat <<'EOF' > test-nuget-pkg/TestNugetPkg.csproj
 </Project>
 EOF
 
-cat <<'EOF' > test-nuget-pkg/Class1.cs
+cat <<EOF >  test-nuget-pkg/Class1.cs
 namespace TestNugetPkg;
 
 public static class Hello
@@ -914,7 +914,7 @@ test-ansible-pkg/
 ```bash
 mkdir -p test-ansible-pkg/meta test-ansible-pkg/plugins/modules
 
-cat <<'EOF' > test-ansible-pkg/galaxy.yml
+cat <<EOF >  test-ansible-pkg/galaxy.yml
 namespace: test
 name: hello_nora
 version: 0.1.0
@@ -926,11 +926,11 @@ license:
 readme: README.md
 EOF
 
-cat <<'EOF' > test-ansible-pkg/meta/runtime.yml
+cat <<EOF >  test-ansible-pkg/meta/runtime.yml
 requires_ansible: ">=2.14"
 EOF
 
-cat <<'EOF' > test-ansible-pkg/plugins/modules/hello_nora.py
+cat <<EOF >  test-ansible-pkg/plugins/modules/hello_nora.py
 #!/usr/bin/python
 from ansible.module_utils.basic import AnsibleModule
 
@@ -1033,7 +1033,7 @@ test-conan-pkg/
 ```bash
 mkdir -p test-conan-pkg/src
 
-cat <<'EOF' > test-conan-pkg/conanfile.py
+cat <<EOF >  test-conan-pkg/conanfile.py
 from conan import ConanFile
 from conan.tools.cmake import CMake, cmake_layout
 from conan.tools.files import copy
@@ -1064,7 +1064,7 @@ class TestConanPkg(ConanFile):
         self.cpp_info.libs = ["test-conan-pkg"]
 EOF
 
-cat <<'EOF' > test-conan-pkg/CMakeLists.txt
+cat <<EOF >  test-conan-pkg/CMakeLists.txt
 cmake_minimum_required(VERSION 3.15)
 project(test-conan-pkg CXX)
 
@@ -1076,12 +1076,12 @@ install(FILES include/hello.h DESTINATION include)
 EOF
 
 mkdir -p test-conan-pkg/include
-cat <<'EOF' > test-conan-pkg/include/hello.h
+cat <<EOF >  test-conan-pkg/include/hello.h
 #pragma once
 const char* hello_nora();
 EOF
 
-cat <<'EOF' > test-conan-pkg/src/hello.cpp
+cat <<EOF >  test-conan-pkg/src/hello.cpp
 #include "hello.h"
 
 const char* hello_nora() {
@@ -1106,7 +1106,7 @@ conan upload test-conan-pkg/0.1.0 -r nora --confirm
 
 ```bash
 # В conanfile.txt
-cat <<'EOF' > conanfile.txt
+cat <<EOF >  conanfile.txt
 [requires]
 zlib/1.3.1
 test-conan-pkg/0.1.0
@@ -1167,7 +1167,7 @@ test-pub-pkg/
 ```bash
 mkdir -p test-pub-pkg/lib test-pub-pkg/example
 
-cat <<'EOF' > test-pub-pkg/pubspec.yaml
+cat <<EOF >  test-pub-pkg/pubspec.yaml
 name: test_pub_pkg
 description: Test Dart package for NORA registry
 version: 0.1.0
@@ -1177,7 +1177,7 @@ environment:
   sdk: ">=3.0.0 <4.0.0"
 EOF
 
-cat <<'EOF' > test-pub-pkg/lib/test_pub_pkg.dart
+cat <<EOF >  test-pub-pkg/lib/test_pub_pkg.dart
 library test_pub_pkg;
 
 String hello() {
@@ -1185,7 +1185,7 @@ String hello() {
 }
 EOF
 
-cat <<'EOF' > test-pub-pkg/example/test_pub_pkg_example.dart
+cat <<EOF >  test-pub-pkg/example/test_pub_pkg_example.dart
 import 'package:test_pub_pkg/test_pub_pkg.dart';
 
 void main() {
@@ -1287,7 +1287,7 @@ NORA позволяет блокировать пакеты с известны�
 Сначала создаём ConfigMap с blocklist и (опционально) Secret с allowlist:
 
 ```bash
-cat <<'EOF' > blocklist.json
+cat <<EOF >  blocklist.json
 {
   "version": 1,
   "rules": [
@@ -1318,7 +1318,7 @@ kubectl create configmap nora-blocklist \
 Пример `allowlist.json`:
 
 ```bash
-cat <<'EOF' > allowlist.json
+cat <<EOF >  allowlist.json
 {
   "version": 1,
   "mode": "default-deny",
