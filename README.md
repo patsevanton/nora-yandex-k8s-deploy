@@ -191,6 +191,10 @@ config:
     enable: "all"
   auth:
     enabled: true
+    # Нужно для Terraform network_mirror: клиент Terraform не отправляет
+    # заголовок Authorization, поэтому для скачивания провайдеров необходим
+    # анонимный доступ на чтение. Запись (push) по-прежнему требует авторизации.
+    anonymous_read: true
     htpasswd:
       existingSecret: nora-htpasswd
       secretKey: users.htpasswd
@@ -883,6 +887,10 @@ config:
       min_release_age: "5d"
   auth:
     enabled: true
+    # Нужно для Terraform network_mirror: клиент Terraform не отправляет
+    # заголовок Authorization, поэтому для скачивания провайдеров необходим
+    # анонимный доступ на чтение. Запись (push) по-прежнему требует авторизации.
+    anonymous_read: true
     htpasswd:
       existingSecret: nora-htpasswd
       secretKey: users.htpasswd
