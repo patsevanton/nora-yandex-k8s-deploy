@@ -148,6 +148,13 @@ kubectl create secret generic nora-htpasswd \
 
 NORA поддерживает три роли: `read` (чтение), `write` (чтение + запись), `admin` (всё + управление токенами). Роли назначаются через токены (см. ниже).
 
+### Шаг 3. Создаём S3 Secret для хранилища
+
+```bash
+terraform apply
+kubectl apply -f secret_for_bucket.yaml
+```
+
 ## Деплой NORA через Helm
 
 Инфраструктура готова — кластер работает, ingress-nginx слушает на публичном IP, cert-manager выпустит TLS-сертификат автоматически. Теперь ставим NORA.

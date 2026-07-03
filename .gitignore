@@ -54,3 +54,4 @@ test-maven-pkg/target/
 test-helm-pkg/*
 test-cargo-pkg/*
 helm-values.yaml
+secret_for_bucket.yaml
