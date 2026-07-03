@@ -376,8 +376,11 @@ npm install @babel/core --registry https://nora-apatsev.duckdns.org/npm/
 python3 -m venv .venv
 source .venv/bin/activate
 
+# Установка pip (на некоторых системах не устанавливается автоматически)
+python3 -m ensurepip --upgrade
+
 # Установка пакета через NORA (с токеном)
-pip install --index-url https://token:nra_82ff3b514d6944a88278aa200da6ca0c@nora-apatsev.duckdns.org/simple/ flask
+python3 -m pip install --index-url https://token:nra_82ff3b514d6944a88278aa200da6ca0c@nora-apatsev.duckdns.org/simple/ flask
 ```
 
 Пример минимального Python-пакета для публикации (директория `python-pkg-example` уже есть в репозитории):
