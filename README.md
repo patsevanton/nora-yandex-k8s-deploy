@@ -647,36 +647,560 @@ terraform init
 
 ### RubyGems
 
+NORA поддерживает proxy/cache для RubyGems — проксирует запросы к rubygems.org и кэширует гемы.
+
+#### Настройка зеркалирования
+
+Настройте bundler на использование NORA как зеркала rubygems.org:
+
 ```bash
+# Глобально (рекомендуется)
 bundle config mirror.https://rubygems.org https://nora-apatsev.duckdns.org/gems/
+
+# Или через .bundle/config в проекте
+mkdir -p .bundle
+cat <<'EOF' > .bundle/config
+---
+BUNDLE_MIRROR__HTTPS://RUBYGEMS__ORG/: "https://nora-apatsev.duckdns.org/gems/"
+EOF
+```
+
+#### Установка зависимостей
+
+```bash
 bundle install
+```
+
+#### Публикация гема
+
+Для публикации гема в NORA используйте `gem push` с указанием реестра:
+
+```bash
+# Авторизация (токен используется как пароль, любое имя пользователя)
+curl -u "token:nra_138a351156fa40b0b536ba429eb8d72b" \
+  https://nora-apatsev.duckdns.org/api/v1/gems
+
+# Собираем гем из .gemspec
+gem build mygem.gemspec
+
+# Публикуем
+gem push mygem-0.1.0.gem \
+  --host https://nora-apatsev.duckdns.org/gems/ \
+  --key nra_138a351156fa40b0b536ba429eb8d72b
+```
+
+Пример минимального тестового гема:
+
+```
+test-ruby-pkg/
+├── test-ruby-pkg.gemspec
+├── Gemfile
+└── lib/
+    └── test_ruby_pkg.rb
+```
+
+```bash
+mkdir -p test-ruby-pkg/lib
+cat <<'EOF' > test-ruby-pkg/test-ruby-pkg.gemspec
+Gem::Specification.new do |s|
+  s.name        = "test-ruby-pkg"
+  s.version     = "0.1.0"
+  s.summary     = "Test gem for NORA registry"
+  s.description = "Minimal Ruby gem for testing NORA registry"
+  s.authors     = ["Test"]
+  s.email       = "test@example.com"
+  s.files       = ["lib/test_ruby_pkg.rb"]
+  s.homepage    = "https://nora-apatsev.duckdns.org"
+  s.license     = "MIT"
+end
+EOF
+
+cat <<'EOF' > test-ruby-pkg/lib/test_ruby_pkg.rb
+module TestRubyPkg
+  def self.hello
+    "Hello from NORA!"
+  end
+end
+EOF
+
+cat <<'EOF' > test-ruby-pkg/Gemfile
+source "https://nora-apatsev.duckdns.org/gems/"
+gemspec
+EOF
+```
+
+```bash
+cd test-ruby-pkg
+gem build test-ruby-pkg.gemspec
+gem push test-ruby-pkg-0.1.0.gem --host https://nora-apatsev.duckdns.org/gems/
+```
+
+#### Установка из NORA
+
+```bash
+# Через Gemfile
+echo 'source "https://nora-apatsev.duckdns.org/gems/"' > Gemfile
+echo 'gem "test-ruby-pkg"' >> Gemfile
+bundle install
+
+# Или через gem install
+gem install test-ruby-pkg --source https://nora-apatsev.duckdns.org/gems/
 ```
 
 ### NuGet (.NET)
 
+NORA поддерживает NuGet V3 API — проксирует запросы к nuget.org и кэширует пакеты.
+
+#### Настройка источника пакетов
+
 ```bash
-dotnet nuget add source https://nora-apatsev.duckdns.org/nuget/v3/index.json -n nora
+# Добавляем NORA как источник NuGet-пакетов
+dotnet nuget add source https://nora-apatsev.duckdns.org/nuget/v3/index.json \
+  -n nora \
+  -u token \
+  -p nra_138a351156fa40b0b536ba429eb8d72b \
+  --store-password-in-clear-text
+
+# Или через nuget CLI
+nuget source add -Name nora \
+  -Source https://nora-apatsev.duckdns.org/nuget/v3/index.json \
+  -UserName token \
+  -Password nra_138a351156fa40b0b536ba429eb8d72b
+```
+
+Или через файл `nuget.config` в проекте:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <add key="nora" value="https://nora-apatsev.duckdns.org/nuget/v3/index.json" />
+  </packageSources>
+  <packageSourceCredentials>
+    <nora>
+      <add key="Username" value="token" />
+      <add key="ClearTextPassword" value="nra_138a351156fa40b0b536ba429eb8d72b" />
+    </nora>
+  </packageSourceCredentials>
+</configuration>
+```
+
+#### Установка зависимостей
+
+```bash
 dotnet restore
+```
+
+#### Публикация пакета
+
+Пример минимального тестового NuGet-пакета:
+
+```
+test-nuget-pkg/
+├── TestNugetPkg.csproj
+└── Class1.cs
+```
+
+```bash
+mkdir -p test-nuget-pkg
+cat <<'EOF' > test-nuget-pkg/TestNugetPkg.csproj
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <PackageId>TestNugetPkg</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Test</Authors>
+    <Description>Test NuGet package for NORA registry</Description>
+  </PropertyGroup>
+</Project>
+EOF
+
+cat <<'EOF' > test-nuget-pkg/Class1.cs
+namespace TestNugetPkg;
+
+public static class Hello
+{
+    public static string Greet() => "Hello from NORA!";
+}
+EOF
+```
+
+```bash
+cd test-nuget-pkg
+
+# Собираем пакет
+dotnet pack -c Release
+
+# Публикуем в NORA
+dotnet nuget push bin/Release/TestNugetPkg.0.1.0.nupkg \
+  --source https://nora-apatsev.duckdns.org/nuget/v3/index.json \
+  --api-key nra_138a351156fa40b0b536ba429eb8d72b
+```
+
+#### Установка из NORA
+
+```bash
+dotnet add package TestNugetPkg --source https://nora-apatsev.duckdns.org/nuget/v3/index.json
 ```
 
 ### Ansible Galaxy
 
+NORA поддерживает Ansible Galaxy API — проксирует запросы к galaxy.ansible.com и кэширует коллекции и роли.
+
+#### Установка коллекций
+
 ```bash
+# Установка коллекции из NORA (с аутентификацией)
 ansible-galaxy collection install community.general \
-  -s https://nora-apatsev.duckdns.org/ansible/
+  -s https://nora-apatsev.duckdns.org/ansible/ \
+  --token nra_138a351156fa40b0b536ba429eb8d72b
+```
+
+Для постоянной настройки добавьте сервер в `ansible.cfg`:
+
+```ini
+[galaxy]
+server_list = nora
+
+[galaxy_server.nora]
+url = https://nora-apatsev.duckdns.org/ansible/
+token = nra_138a351156fa40b0b536ba429eb8d72b
+```
+
+После этого все команды `ansible-galaxy` будут использовать NORA:
+
+```bash
+ansible-galaxy collection install community.general
+ansible-galaxy role install geerlingguy.docker
+```
+
+#### Публикация коллекции
+
+Пример минимальной тестовой коллекции:
+
+```
+test-ansible-pkg/
+├── galaxy.yml
+├── README.md
+├── meta/
+│   └── runtime.yml
+└── plugins/
+    └── modules/
+        └── hello_nora.py
+```
+
+```bash
+mkdir -p test-ansible-pkg/meta test-ansible-pkg/plugins/modules
+
+cat <<'EOF' > test-ansible-pkg/galaxy.yml
+namespace: test
+name: hello_nora
+version: 0.1.0
+description: Test Ansible collection for NORA registry
+authors:
+  - Test
+license:
+  - MIT
+readme: README.md
+EOF
+
+cat <<'EOF' > test-ansible-pkg/meta/runtime.yml
+requires_ansible: ">=2.14"
+EOF
+
+cat <<'EOF' > test-ansible-pkg/plugins/modules/hello_nora.py
+#!/usr/bin/python
+from ansible.module_utils.basic import AnsibleModule
+
+def main():
+    module = AnsibleModule(argument_spec={})
+    module.exit_json(changed=False, msg="Hello from NORA!")
+
+if __name__ == '__main__':
+    main()
+EOF
+```
+
+Сборка и публикация:
+
+```bash
+cd test-ansible-pkg
+
+# Собираем коллекцию в tar.gz
+ansible-galaxy collection build
+
+# Публикуем в NORA
+ansible-galaxy collection publish test-hello_nora-0.1.0.tar.gz \
+  --server https://nora-apatsev.duckdns.org/ansible/ \
+  --token nra_138a351156fa40b0b536ba429eb8d72b
+```
+
+#### Публикация роли
+
+```bash
+# Инициализируем роль
+ansible-galaxy role init test-hello-nora
+cd test-hello-nora
+
+# Публикуем роль в NORA
+ansible-galaxy role import \
+  --server https://nora-apatsev.duckdns.org/ansible/ \
+  --token nra_138a351156fa40b0b536ba429eb8d72b
 ```
 
 ### Conan (C/C++)
 
+NORA поддерживает Conan V2 API — проксирует запросы к conan.io (ConanCenter) и кэширует пакеты.
+
+#### Настройка удалённого репозитория
+
 ```bash
+# Добавляем NORA как удалённый репозиторий Conan
 conan remote add nora https://nora-apatsev.duckdns.org/conan
+
+# Авторизация
+conan remote login nora -p nra_138a351156fa40b0b536ba429eb8d72b
+```
+
+Для постоянной настройки используйте `global.conf`:
+
+```ini
+# ~/.conan2/global.conf
+core.sources:download_cache=~/.conan2/download_cache
+```
+
+Или файл `remotes.json`:
+
+```json
+{
+  "remotes": [
+    {
+      "name": "nora",
+      "url": "https://nora-apatsev.duckdns.org/conan",
+      "verify_ssl": true
+    }
+  ]
+}
+```
+
+#### Установка пакетов
+
+```bash
+# Установка пакета из NORA
 conan install zlib/1.3.1@ --remote=nora
+
+# Установка с зависимостями
+conan install . --remote=nora --output-folder=build
+
+# Установка с профилем
+conan install . --remote=nora -pr:h default -pr:b default
+```
+
+#### Публикация пакета
+
+Пример минимального тестового Conan-пакета:
+
+```
+test-conan-pkg/
+├── conanfile.py
+├── src/
+│   └── hello.cpp
+└── CMakeLists.txt
+```
+
+```bash
+mkdir -p test-conan-pkg/src
+
+cat <<'EOF' > test-conan-pkg/conanfile.py
+from conan import ConanFile
+from conan.tools.cmake import CMake, cmake_layout
+from conan.tools.files import copy
+import os
+
+class TestConanPkg(ConanFile):
+    name = "test-conan-pkg"
+    version = "0.1.0"
+    license = "MIT"
+    description = "Test Conan package for NORA registry"
+    settings = "os", "compiler", "build_type", "arch"
+    generators = "CMakeToolchain", "CMakeDeps"
+    exports_sources = "src/*", "CMakeLists.txt"
+
+    def layout(self):
+        cmake_layout(self)
+
+    def build(self):
+        cmake = CMake(self)
+        cmake.configure()
+        cmake.build()
+
+    def package(self):
+        cmake = CMake(self)
+        cmake.install()
+
+    def package_info(self):
+        self.cpp_info.libs = ["test-conan-pkg"]
+EOF
+
+cat <<'EOF' > test-conan-pkg/CMakeLists.txt
+cmake_minimum_required(VERSION 3.15)
+project(test-conan-pkg CXX)
+
+add_library(test-conan-pkg src/hello.cpp)
+target_include_directories(test-conan-pkg PUBLIC include)
+
+install(TARGETS test-conan-pkg DESTINATION lib)
+install(FILES include/hello.h DESTINATION include)
+EOF
+
+mkdir -p test-conan-pkg/include
+cat <<'EOF' > test-conan-pkg/include/hello.h
+#pragma once
+const char* hello_nora();
+EOF
+
+cat <<'EOF' > test-conan-pkg/src/hello.cpp
+#include "hello.h"
+
+const char* hello_nora() {
+    return "Hello from NORA!";
+}
+EOF
+```
+
+Сборка и публикация:
+
+```bash
+cd test-conan-pkg
+
+# Собираем пакет
+conan create . --remote=nora
+
+# Публикуем в NORA
+conan upload test-conan-pkg/0.1.0 -r nora --confirm
+```
+
+#### Использование в проекте
+
+```bash
+# В conanfile.txt
+cat <<'EOF' > conanfile.txt
+[requires]
+zlib/1.3.1
+test-conan-pkg/0.1.0
+
+[generators]
+CMakeToolchain
+CMakeDeps
+EOF
+
+conan install . --remote=nora --output-folder=build
+cmake --preset conan-release
+cmake --build build
 ```
 
 ### Pub (Dart/Flutter)
 
+NORA поддерживает pub.dev API — проксирует запросы к pub.dev и кэширует пакеты.
+
+#### Настройка
+
 ```bash
+# Указываем NORA как хост для pub
 export PUB_HOSTED_URL=https://nora-apatsev.duckdns.org/pub
+
+# Для Flutter
+export FLUTTER_STORAGE_BASE_URL=https://nora-apatsev.duckdns.org/pub
+```
+
+Для постоянной настройки добавьте в `~/.bashrc` или `~/.zshrc`:
+
+```bash
+echo 'export PUB_HOSTED_URL=https://nora-apatsev.duckdns.org/pub' >> ~/.bashrc
+```
+
+#### Установка зависимостей
+
+```bash
+dart pub get
+
+# Или для Flutter
+flutter pub get
+```
+
+#### Публикация пакета
+
+Пример минимального тестового Dart-пакета:
+
+```
+test-pub-pkg/
+├── pubspec.yaml
+├── lib/
+│   └── test_pub_pkg.dart
+├��─ example/
+│   └── test_pub_pkg_example.dart
+└── README.md
+```
+
+```bash
+mkdir -p test-pub-pkg/lib test-pub-pkg/example
+
+cat <<'EOF' > test-pub-pkg/pubspec.yaml
+name: test_pub_pkg
+description: Test Dart package for NORA registry
+version: 0.1.0
+homepage: https://nora-apatsev.duckdns.org
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+EOF
+
+cat <<'EOF' > test-pub-pkg/lib/test_pub_pkg.dart
+library test_pub_pkg;
+
+String hello() {
+  return "Hello from NORA!";
+}
+EOF
+
+cat <<'EOF' > test-pub-pkg/example/test_pub_pkg_example.dart
+import 'package:test_pub_pkg/test_pub_pkg.dart';
+
+void main() {
+  print(hello());
+}
+EOF
+```
+
+Публикация:
+
+```bash
+cd test-pub-pkg
+
+# Авторизация через токен (создаётся на pub.dev)
+export PUB_TOKEN=nra_138a351156fa40b0b536ba429eb8d72b
+
+# Публикуем в NORA
+dart pub publish --server=https://nora-apatsev.duckdns.org/pub
+
+# Или для Flutter
+flutter pub publish --server=https://nora-apatsev.duckdns.org/pub
+```
+
+#### Использование в проекте
+
+```yaml
+# pubspec.yaml
+name: my_app
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  test_pub_pkg: ^0.1.0
+```
+
+```bash
+# С PUB_HOSTED_URL зависимости тянутся из NORA
 dart pub get
 ```
 
