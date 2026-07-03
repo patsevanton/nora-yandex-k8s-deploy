@@ -42,3 +42,15 @@ terraform.rc
 # Optional: ignore plan files saved before destroying Terraform configuration
 # Uncomment the line below if you want to ignore planout files.
 # planout
+.terraform.lock.hcl
+
+node_modules/
+package-lock.json
+users.htpasswd
+package.json
+test-npm-pkg/.npmrc
+python-pkg-example/dist/*
+test-maven-pkg/target/
+test-helm-pkg/*
+test-cargo-pkg/*
+helm-values.yaml

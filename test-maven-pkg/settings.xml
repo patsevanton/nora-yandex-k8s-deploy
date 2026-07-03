@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
+    <servers>
+        <server>
+            <id>nora</id>
+            <username>admin</username>
+            <password>your-password</password>
+        </server>
+    </servers>
+</settings>
