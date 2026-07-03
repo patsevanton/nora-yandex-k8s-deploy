@@ -508,6 +508,14 @@ helm install myrelease oci://nora-apatsev.duckdns.org/helm/mychart --version 0.1
 
 ### Go modules
 
+Для использования `go get` необходимо находиться внутри Go-модуля (директории с `go.mod`):
+
+```bash
+# Если модуль ещё не создан — инициализируем
+mkdir test-go-pkg && cd test-go-pkg
+go mod init test-go-pkg
+```
+
 Настройте Go proxy с аутентификацией.
 
 **Вариант 1: Токен в URL (проще)**
@@ -529,14 +537,9 @@ chmod 600 ~/.netrc
 go env -w GOPROXY=https://nora-apatsev.duckdns.org/go,direct
 ```
 
-Для использования `go get` необходимо находиться внутри Go-модуля (директории с `go.mod`):
+Теперь go get работает через NORA:
 
 ```bash
-# Если модуль ещё не создан — инициализируем
-mkdir myproject && cd myproject
-go mod init myproject
-
-# Теперь go get работает через NORA
 go get golang.org/x/text@latest
 ```
 
