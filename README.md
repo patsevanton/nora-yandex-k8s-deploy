@@ -315,9 +315,26 @@ npm install lodash
 
 #### Тестирование npm publish
 
-Чтобы проверить публикацию, можно создать минимальный тестовый пакет (директория `test-npm-pkg` уже есть в репозитории):
+Чтобы проверить публикацию, можно создать минимальный тестовый пакет:
 
 ```bash
+mkdir -p test-npm-pkg
+
+cat <<'EOF' > test-npm-pkg/package.json
+{
+  "name": "@test/hello-world",
+  "version": "1.0.0",
+  "description": "Test package for Nora registry",
+  "main": "index.js"
+}
+EOF
+
+cat <<'EOF' > test-npm-pkg/index.js
+module.exports = function hello() {
+  return "Hello from Nora registry!";
+};
+EOF
+
 cd test-npm-pkg
 
 npm config set //nora-apatsev.duckdns.org/npm/:_authToken nra_82ff3b514d6944a88278aa200da6ca0c
@@ -332,7 +349,7 @@ npm install @test/hello-world --registry https://nora-apatsev.duckdns.org/npm/
 node -e "const hello = require('@test/hello-world'); console.log(hello());"
 ```
 
-Содержимое тестового пакета:
+Структура тестового пакета:
 
 ```
 test-npm-pkg/
