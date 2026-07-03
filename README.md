@@ -191,10 +191,7 @@ config:
     enable: "all"
   auth:
     enabled: true
-    # Нужно для Terraform network_mirror: клиент Terraform не отправляет
-    # заголовок Authorization, поэтому для скачивания провайдеров необходим
-    # анонимный доступ на чтение. Запись (push) по-прежнему требует авторизации.
-    anonymous_read: true
+    anonymous_read: true # Для terraform
     htpasswd:
       existingSecret: nora-htpasswd
       secretKey: users.htpasswd
@@ -627,6 +624,9 @@ cargo publish --registry nora
 NORA реализует Cargo sparse index (RFC 2789) — не нужно хранить git-репозиторий индекса.
 
 ### Terraform
+
+Так как Terraform не отправляет заголовок Authorization, поэтому для скачивания провайдеров необходим анонимный доступ на чтение. 
+Для этого в helm-values.yaml выставляем `anonymous_read: true`.
 
 В файле `~/.terraformrc`:
 
