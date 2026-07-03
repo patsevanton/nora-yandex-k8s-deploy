@@ -176,7 +176,12 @@ kubectl apply -f secret_for_bucket.yaml
 Проверяем:
 
 ```bash
+# Проверяем, что Secret создан
 kubectl get secret nora-s3-credentials
+
+# Проверяем наличие ключей
+kubectl get secret nora-s3-credentials -o jsonpath='{.data.S3_ACCESS_KEY}' | base64 -d && echo
+kubectl get secret nora-s3-credentials -o jsonpath='{.data.S3_SECRET_KEY}' | base64 -d && echo
 ```
 
 ## Деплой NORA через Helm
