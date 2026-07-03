@@ -238,12 +238,12 @@ config:
       secretKey: users.htpasswd
 
 extraEnv:
-  - name: NORA_S3_STORAGE_ACCESS_KEY
+  - name: NORA_STORAGE_S3_ACCESS_KEY
     valueFrom:
       secretKeyRef:
         name: nora-s3-credentials
         key: S3_ACCESS_KEY
-  - name: NORA_S3_STORAGE_SECRET_KEY
+  - name: NORA_STORAGE_S3_SECRET_KEY
     valueFrom:
       secretKeyRef:
         name: nora-s3-credentials
@@ -312,17 +312,17 @@ curl -X POST https://nora-apatsev.duckdns.org/api/tokens \
     "ttl_days": 90,
     "description": "CI/CD pipeline token"
   }'
-# {"token": "nra_cc40a977a2b147cfa4bde58c2b193b3a...", "expires_in_days": 90}
+# {"token": "nra_138a351156fa40b0b536ba429eb8d72b...", "expires_in_days": 90}
 
 # проверка токена
-curl -H "Authorization: Bearer nra_cc40a977a2b147cfa4bde58c2b193b3a" \
+curl -H "Authorization: Bearer nra_138a351156fa40b0b536ba429eb8d72b" \
   https://nora-apatsev.duckdns.org/v2/_catalog
 
 # Использовать токен для npm
-npm config set //nora-apatsev.duckdns.org:_authToken nra_cc40a977a2b147cfa4bde58c2b193b3a
+npm config set //nora-apatsev.duckdns.org:_authToken nra_138a351156fa40b0b536ba429eb8d72b
 
 # Docker login с токеном (токен в качестве пароля, любое имя пользователя)
-docker login nora-apatsev.duckdns.org -u token -p nra_cc40a977a2b147cfa4bde58c2b193b3a
+docker login nora-apatsev.duckdns.org -u token -p nra_138a351156fa40b0b536ba429eb8d72b
 ```
 
 ## Использование: примеры для каждого формата
@@ -361,7 +361,7 @@ npm install lodash
 ```bash
 cd test-npm-pkg
 
-npm config set //nora-apatsev.duckdns.org/npm/:_authToken nra_cc40a977a2b147cfa4bde58c2b193b3a
+npm config set //nora-apatsev.duckdns.org/npm/:_authToken nra_138a351156fa40b0b536ba429eb8d72b
 
 # Публикуем (запускается из директории test-npm-pkg)
 npm publish --registry https://nora-apatsev.duckdns.org/npm/
@@ -401,7 +401,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # Установка пакета через NORA (с токеном)
-pip install --index-url https://token:nra_cc40a977a2b147cfa4bde58c2b193b3a@nora-apatsev.duckdns.org/simple/ flask
+pip install --index-url https://token:nra_138a351156fa40b0b536ba429eb8d72b@nora-apatsev.duckdns.org/simple/ flask
 ```
 
 Пример минимального Python-пакета для публикации (директория `python-pkg-example` уже есть в репозитории):
@@ -421,7 +421,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install build twine
 python -m build
-twine upload --repository-url https://token:nra_cc40a977a2b147cfa4bde58c2b193b3a@nora-apatsev.duckdns.org/simple/ dist/*
+twine upload --repository-url https://token:nra_138a351156fa40b0b536ba429eb8d72b@nora-apatsev.duckdns.org/simple/ dist/*
 ```
 
 Для постоянной настройки создайте `~/.pip/pip.conf`:
@@ -556,16 +556,16 @@ helm install myrelease oci://nora-apatsev.duckdns.org/helm/mychart --version 0.1
 
 ```bash
 # Глобально через go env (рекомендуется)
-go env -w GOPROXY=https://token:nra_cc40a977a2b147cfa4bde58c2b193b3a@nora-apatsev.duckdns.org/go,direct
+go env -w GOPROXY=https://token:nra_138a351156fa40b0b536ba429eb8d72b@nora-apatsev.duckdns.org/go,direct
 
 # Или через переменную окружения
-export GOPROXY=https://token:nra_cc40a977a2b147cfa4bde58c2b193b3a@nora-apatsev.duckdns.org/go,direct
+export GOPROXY=https://token:nra_138a351156fa40b0b536ba429eb8d72b@nora-apatsev.duckdns.org/go,direct
 ```
 
 **Вариант 2: Через .netrc (рекомендуется для CI/CD)**
 
 ```bash
-echo "machine nora-apatsev.duckdns.org login token password nra_cc40a977a2b147cfa4bde58c2b193b3a" >> ~/.netrc
+echo "machine nora-apatsev.duckdns.org login token password nra_138a351156fa40b0b536ba429eb8d72b" >> ~/.netrc
 chmod 600 ~/.netrc
 
 go env -w GOPROXY=https://nora-apatsev.duckdns.org/go,direct
@@ -620,10 +620,10 @@ EOF
 
 ```bash
 # Вариант 1: через stdin (рекомендуется для CI/CD)
-echo "Bearer nra_cc40a977a2b147cfa4bde58c2b193b3a" | cargo login --registry nora
+echo "Bearer nra_138a351156fa40b0b536ba429eb8d72b" | cargo login --registry nora
 
 # Вариант 2: через переменную окружения
-export CARGO_REGISTRIES_NORA_TOKEN="Bearer nra_cc40a977a2b147cfa4bde58c2b193b3a"
+export CARGO_REGISTRIES_NORA_TOKEN="Bearer nra_138a351156fa40b0b536ba429eb8d72b"
 ```
 
 > **Важно:** префикс `Bearer ` обязателен — без него Cargo выдаст ошибку `the token does not include an authentication scheme`.
@@ -927,12 +927,12 @@ config:
       secretKey: users.htpasswd
 
 extraEnv:
-  - name: NORA_S3_STORAGE_ACCESS_KEY
+  - name: NORA_STORAGE_S3_ACCESS_KEY
     valueFrom:
       secretKeyRef:
         name: nora-s3-credentials
         key: S3_ACCESS_KEY
-  - name: NORA_S3_STORAGE_SECRET_KEY
+  - name: NORA_STORAGE_S3_SECRET_KEY
     valueFrom:
       secretKeyRef:
         name: nora-s3-credentials

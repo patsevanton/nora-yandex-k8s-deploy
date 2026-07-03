@@ -55,3 +55,4 @@ test-helm-pkg/*
 test-cargo-pkg/*
 helm-values.yaml
 secret_for_bucket.yaml
+.npmrc
