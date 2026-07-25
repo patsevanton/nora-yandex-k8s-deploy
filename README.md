@@ -154,26 +154,22 @@ kubectl create secret generic nora-htpasswd \
 
 NORA поддерживает три роли: `read` (чтение), `write` (чтение + запись), `admin` (всё + управление токенами). Роли назначаются через токены (см. ниже).
 
-### Шаг 3. Создаём S3-бакет и Kubernetes Secret для хранилища
+### Шаг 3. Применяем Kubernetes Secret для S3-хранилища
 
-Terraform создаёт S3-бакет в Yandex Object Storage, сервисный аккаунт с правами `storage.admin` и генерирует файл `secret_for_bucket.yaml` из шаблона `secret_for_bucket.yaml.tpl`. Если вы разворачиваете инфраструктуру не через Terraform, создайте файл `secret_for_bucket.yaml` вручную:
+На шаге 1 Terraform уже создал S3-бакет в Yandex Object Storage, сервисный аккаунт с правами `storage.admin` и сгенерировал файл `secret_for_bucket.yaml` из шаблона `secret_for_bucket.yaml.tpl` с реальными ключами доступа — ничего править руками не нужно. Файл выглядит примерно так (ключи подставлены автоматически):
 
-```bash
-cat <<EOF > secret_for_bucket.yaml
+```yaml
 apiVersion: v1
 kind: Secret
 metadata:
   name: nora-s3-credentials
 type: Opaque
 stringData:
-  S3_ACCESS_KEY: <ваш_access_key>
-  S3_SECRET_KEY: <ваш_secret_key>
-EOF
+  S3_ACCESS_KEY: YCAJE...
+  S3_SECRET_KEY: YCNL9...
 ```
 
-Замените `<ваш_access_key>` и `<ваш_secret_key>` на реальные ключи сервисного аккаунта с правами `storage.admin` (можно создать в Yandex Cloud через `yc iam access-key create --service-account-name <sa-name>`).
-
-Затем применяем его в кластер:
+Просто применяем его в кластер:
 
 ```bash
 kubectl apply -f secret_for_bucket.yaml
@@ -203,6 +199,12 @@ kubectl get secret nora-s3-credentials -o jsonpath='{.data.S3_SECRET_KEY}' | bas
 ```bash
 helm repo add nora https://getnora-io.github.io/helm-charts
 helm repo update
+```
+
+В этой статье используется чарт версии **0.4.3** (она уже указана в команде установки ниже через `--version 0.4.3`). Посмотреть все доступные версии можно так:
+
+```bash
+helm search repo nora/nora --versions
 ```
 
 ### values-файл генерируется автоматически
@@ -288,7 +290,7 @@ resources:
 ### Устанавливаем
 
 ```bash
-helm upgrade --install nora nora/nora --version 0.4.0 -f helm-values.yaml
+helm upgrade --install nora nora/nora --version 0.4.3 -f helm-values.yaml
 ```
 
 ### Проверяем
@@ -323,17 +325,12 @@ curl -X POST https://$NORA_FQDN/api/tokens \
     "ttl_days": 90,
     "description": "CI/CD pipeline token"
   }'
-# {"token": "nra_82ff3b514d6944a88278aa200da6ca0c...", "expires_in_days": 90}
+# {"token": "nra_5d6640336f5a450cb17bc386404f1b47...", "expires_in_days": 90}
 
 # проверка токена
-curl -H "Authorization: Bearer nra_82ff3b514d6944a88278aa200da6ca0c" \
+curl -H "Authorization: Bearer nra_5d6640336f5a450cb17bc386404f1b47" \
   https://$NORA_FQDN/v2/_catalog
 
-# Использовать токен для npm
-npm config set //$NORA_FQDN:_authToken nra_82ff3b514d6944a88278aa200da6ca0c
-
-# Docker login с токеном (токен в качестве пароля, любое имя пользователя)
-docker login $NORA_FQDN -u token -p nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
 ## Использование: примеры для каждого формата
@@ -341,6 +338,9 @@ docker login $NORA_FQDN -u token -p nra_82ff3b514d6944a88278aa200da6ca0c
 ### Docker
 
 ```bash
+# Docker login с токеном (токен в качестве пароля, любое имя пользователя)
+docker login $NORA_FQDN -u token -p nra_5d6640336f5a450cb17bc386404f1b47
+
 # Берём готовый публичный образ (или собираем свой из Dockerfile)
 docker pull nginx:alpine
 
@@ -357,6 +357,9 @@ NORA полностью совместима с Docker Registry v2 API, поэт
 ### npm
 
 ```bash
+# Использовать токен для npm
+npm config set //$NORA_FQDN:_authToken nra_5d6640336f5a450cb17bc386404f1b47
+
 # Настройка реестра для проекта
 npm config set registry https://$NORA_FQDN/npm/
 
@@ -389,7 +392,7 @@ EOF
 
 cd test-npm-pkg
 
-npm config set //$NORA_FQDN/npm/:_authToken nra_82ff3b514d6944a88278aa200da6ca0c
+npm config set //$NORA_FQDN/npm/:_authToken nra_5d6640336f5a450cb17bc386404f1b47
 
 # Публикуем (запускается из директории test-npm-pkg)
 npm publish --registry https://$NORA_FQDN/npm/
@@ -432,7 +435,7 @@ source .venv/bin/activate
 python3 -m ensurepip --upgrade
 
 # Установка пакета через NORA (с токеном)
-python3 -m pip install --index-url https://token:nra_82ff3b514d6944a88278aa200da6ca0c@$NORA_FQDN/simple/ flask
+python3 -m pip install --index-url https://token:nra_5d6640336f5a450cb17bc386404f1b47@$NORA_FQDN/simple/ flask
 ```
 
 Пример минимального Python-пакета для публикации:
@@ -452,7 +455,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install build twine
 python -m build
-twine upload --repository-url https://token:nra_82ff3b514d6944a88278aa200da6ca0c@$NORA_FQDN/simple/ dist/*
+twine upload --repository-url https://token:nra_5d6640336f5a450cb17bc386404f1b47@$NORA_FQDN/simple/ dist/*
 ```
 
 Для постоянной настройки создайте `~/.pip/pip.conf`:
@@ -597,16 +600,16 @@ go mod init test-go-pkg
 
 ```bash
 # Глобально через go env (рекомендуется)
-go env -w GOPROXY=https://token:nra_82ff3b514d6944a88278aa200da6ca0c@$NORA_FQDN/go,direct
+go env -w GOPROXY=https://token:nra_5d6640336f5a450cb17bc386404f1b47@$NORA_FQDN/go,direct
 
 # Или через переменную окружения
-export GOPROXY=https://token:nra_82ff3b514d6944a88278aa200da6ca0c@$NORA_FQDN/go,direct
+export GOPROXY=https://token:nra_5d6640336f5a450cb17bc386404f1b47@$NORA_FQDN/go,direct
 ```
 
 **Вариант 2: Через .netrc (рекомендуется для CI/CD)**
 
 ```bash
-echo "machine $NORA_FQDN login token password nra_82ff3b514d6944a88278aa200da6ca0c" >> ~/.netrc
+echo "machine $NORA_FQDN login token password nra_5d6640336f5a450cb17bc386404f1b47" >> ~/.netrc
 chmod 600 ~/.netrc
 
 go env -w GOPROXY=https://$NORA_FQDN/go,direct
@@ -656,10 +659,10 @@ EOF
 
 ```bash
 # Вариант 1: через stdin (рекомендуется для CI/CD)
-echo "Bearer nra_82ff3b514d6944a88278aa200da6ca0c" | cargo login --registry nora
+echo "Bearer nra_5d6640336f5a450cb17bc386404f1b47" | cargo login --registry nora
 
 # Вариант 2: через переменную окружения
-export CARGO_REGISTRIES_NORA_TOKEN="Bearer nra_82ff3b514d6944a88278aa200da6ca0c"
+export CARGO_REGISTRIES_NORA_TOKEN="Bearer nra_5d6640336f5a450cb17bc386404f1b47"
 ```
 
 > **Важно:** префикс `Bearer ` обязателен — без него Cargo выдаст ошибку `the token does not include an authentication scheme`.
@@ -751,7 +754,7 @@ bundle install
 
 ```bash
 # Авторизация (токен используется как пароль, любое имя пользователя)
-curl -u "token:nra_82ff3b514d6944a88278aa200da6ca0c" \
+curl -u "token:nra_5d6640336f5a450cb17bc386404f1b47" \
   https://$NORA_FQDN/api/v1/gems
 
 # Собираем гем из .gemspec
@@ -760,7 +763,7 @@ gem build mygem.gemspec
 # Публикуем
 gem push mygem-0.1.0.gem \
   --host https://$NORA_FQDN/gems/ \
-  --key nra_82ff3b514d6944a88278aa200da6ca0c
+  --key nra_5d6640336f5a450cb17bc386404f1b47
 ```
 
 Пример минимального тестового гема:
@@ -832,14 +835,14 @@ NORA поддерживает NuGet V3 API — проксирует запрос
 dotnet nuget add source https://$NORA_FQDN/nuget/v3/index.json \
   -n nora \
   -u token \
-  -p nra_82ff3b514d6944a88278aa200da6ca0c \
+  -p nra_5d6640336f5a450cb17bc386404f1b47 \
   --store-password-in-clear-text
 
 # Или через nuget CLI
 nuget source add -Name nora \
   -Source https://$NORA_FQDN/nuget/v3/index.json \
   -UserName token \
-  -Password nra_82ff3b514d6944a88278aa200da6ca0c
+  -Password nra_5d6640336f5a450cb17bc386404f1b47
 ```
 
 Или через файл `nuget.config` в проекте:
@@ -853,7 +856,7 @@ nuget source add -Name nora \
   <packageSourceCredentials>
     <nora>
       <add key="Username" value="token" />
-      <add key="ClearTextPassword" value="nra_82ff3b514d6944a88278aa200da6ca0c" />
+      <add key="ClearTextPassword" value="nra_5d6640336f5a450cb17bc386404f1b47" />
     </nora>
   </packageSourceCredentials>
 </configuration>
@@ -908,7 +911,7 @@ dotnet pack -c Release
 # Публикуем в NORA
 dotnet nuget push bin/Release/TestNugetPkg.0.1.0.nupkg \
   --source https://$NORA_FQDN/nuget/v3/index.json \
-  --api-key nra_82ff3b514d6944a88278aa200da6ca0c
+  --api-key nra_5d6640336f5a450cb17bc386404f1b47
 ```
 
 #### Установка из NORA
@@ -927,7 +930,7 @@ NORA поддерживает Ansible Galaxy API — проксирует зап
 # Установка коллекции из NORA (с аутентификацией)
 ansible-galaxy collection install community.general \
   -s https://$NORA_FQDN/ansible/ \
-  --token nra_82ff3b514d6944a88278aa200da6ca0c
+  --token nra_5d6640336f5a450cb17bc386404f1b47
 ```
 
 Для постоянной настройки добавьте сервер в `ansible.cfg`:
@@ -938,7 +941,7 @@ server_list = nora
 
 [galaxy_server.nora]
 url = https://$NORA_FQDN/ansible/
-token = nra_82ff3b514d6944a88278aa200da6ca0c
+token = nra_5d6640336f5a450cb17bc386404f1b47
 ```
 
 После этого все команды `ansible-galaxy` будут использовать NORA:
@@ -1006,7 +1009,7 @@ ansible-galaxy collection build
 # Публикуем в NORA
 ansible-galaxy collection publish test-hello_nora-0.1.0.tar.gz \
   --server https://$NORA_FQDN/ansible/ \
-  --token nra_82ff3b514d6944a88278aa200da6ca0c
+  --token nra_5d6640336f5a450cb17bc386404f1b47
 ```
 
 #### Публикация роли
@@ -1019,7 +1022,7 @@ cd test-hello-nora
 # Публикуем роль в NORA
 ansible-galaxy role import \
   --server https://$NORA_FQDN/ansible/ \
-  --token nra_82ff3b514d6944a88278aa200da6ca0c
+  --token nra_5d6640336f5a450cb17bc386404f1b47
 ```
 
 ### Conan (C/C++)
@@ -1033,7 +1036,7 @@ NORA поддерживает Conan V2 API — проксирует запрос
 conan remote add nora https://$NORA_FQDN/conan
 
 # Авторизация
-conan remote login nora -p nra_82ff3b514d6944a88278aa200da6ca0c
+conan remote login nora -p nra_5d6640336f5a450cb17bc386404f1b47
 ```
 
 Для постоянной настройки используйте `global.conf`:
@@ -1252,7 +1255,7 @@ EOF
 cd test-pub-pkg
 
 # Авторизация через токен (создаётся на pub.dev)
-export PUB_TOKEN=nra_82ff3b514d6944a88278aa200da6ca0c
+export PUB_TOKEN=nra_5d6640336f5a450cb17bc386404f1b47
 
 # Публикуем в NORA
 dart pub publish --server=https://$NORA_FQDN/pub
