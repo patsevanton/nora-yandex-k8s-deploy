@@ -7,13 +7,9 @@ resource "yandex_vpc_address" "addr" {
   }
 }
 
-resource "null_resource" "duckdns_update" {
-  triggers = {
-    ip     = local.ingress_ip
-    domain = var.duckdns_domain
-  }
-
-  provisioner "local-exec" {
-    command = "curl -s 'https://www.duckdns.org/update?domains=${var.duckdns_domain}&token=${var.duckdns_token}&ip=${local.ingress_ip}'"
-  }
+resource "local_file" "helm_values" {
+  content = templatefile("${path.module}/helm-values.yaml.tpl", {
+    fqdn = local.nora_fqdn
+  })
+  filename = "${path.module}/helm-values.yaml"
 }

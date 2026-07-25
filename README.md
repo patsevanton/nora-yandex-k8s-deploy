@@ -28,7 +28,55 @@ NORA уступает Nexus/Artifactory/Harbor по количеству под�
 - **Min Release Age** — карантин свежих пакетов
 - **CVE Blocking** — блокировка уязвимых пакетов по версии
 
-## cert-manager: автоматические TLS-сертификаты
+## Шаг 1. Развёртывание инфраструктуры через Terraform
+
+Перед установкой cert-manager и NORA нужно развернуть инфраструктуру. Terraform создаёт кластер Kubernetes, статический публичный IP, S3-бакет и устанавливает ingress-nginx, а также генерирует из шаблонов файлы `helm-values.yaml` (с подставленным доменом) и `secret_for_bucket.yaml` (с ключами доступа к S3).
+
+### Требования
+
+- [yc CLI](https://yandex.cloud/ru/docs/cli/), настроенный и аутентифицированный (`yc init`)
+- [Terraform](https://www.terraform.io/) >= 1.5
+- [kubectl](https://kubernetes.io/docs/tasks/tools/) и [Helm](https://helm.sh/)
+
+### Запуск
+
+```bash
+# Клонируем репозиторий
+git clone https://github.com/patsevanton/nora-yandex-k8s-deploy
+cd nora-yandex-k8s-deploy
+
+# При необходимости укажите ID каталога (по умолчанию берётся из конфигурации yc):
+# cp terraform.tfvars.example terraform.tfvars
+# и заполните folder_id
+
+terraform init
+terraform apply
+```
+
+После успешного `terraform apply` получаем доступ к кластеру:
+
+```bash
+yc managed-kubernetes cluster get-credentials --id $(terraform output -raw k8s_cluster_id) --external --force
+kubectl get nodes
+```
+
+Готовый домен и IP доступны в outputs:
+
+```bash
+terraform output nora_fqdn
+# nora.84.201.172.10.sslip.io
+```
+
+Для удобства один раз экспортируем домен в переменную — тогда все команды из этой статьи будут работать без правок:
+
+```bash
+export NORA_FQDN=$(terraform output -raw nora_fqdn)
+echo $NORA_FQDN
+```
+
+Далее в примерах используется `$NORA_FQDN`. Домен формируется автоматически через [sslip.io](https://sslip.io) — бесплатный wildcard-DNS, который не требует регистрации и токенов: домен резолвится в IP ingress-контроллера без какой-либо настройки, а Let's Encrypt выдаёт для него валидный TLS-сертификат через HTTP-01 challenge.
+
+## Шаг 2. cert-manager: автоматические TLS-сертификаты
 
 Для работы HTTPS с валидным TLS-сертификатом от Let's Encrypt нужен [cert-manager](https://cert-manager.io/). Он автоматически выпускает и обновляет сертификаты для Ingress-ресурсов.
 
@@ -66,7 +114,7 @@ metadata:
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: noreply@duckdns.org
+    email: admin@sslip.io
     privateKeySecretRef:
       name: letsencrypt-prod-key
     solvers:
@@ -86,7 +134,7 @@ kubectl get clusterissuer letsencrypt-prod
 # letsencrypt-prod   True    10s
 ```
 
-## Аутентификация
+## Шаг 3. Аутентификация
 
 По умолчанию NORA работает без аутентификации (анонимный доступ на чтение). Для включения авторизации выполните следующие шаги:
 
@@ -142,9 +190,13 @@ kubectl get secret nora-s3-credentials -o jsonpath='{.data.S3_ACCESS_KEY}' | bas
 kubectl get secret nora-s3-credentials -o jsonpath='{.data.S3_SECRET_KEY}' | base64 -d && echo
 ```
 
-## Деплой NORA через Helm
+## Шаг 4. Деплой NORA через Helm
 
 Инфраструктура готова — кластер работает, ingress-nginx слушает на публичном IP, cert-manager выпустит TLS-сертификат автоматически. Теперь ставим NORA.
+
+### Домен через sslip.io — ничего вводить не нужно
+
+Домен формируется из публичного IP ingress-контроллера **автоматически**: Terraform уже подставил его в `helm-values.yaml` через шаблон `helm-values.yaml.tpl` при `terraform apply` на шаге 1.
 
 ### Добавляем Helm-репозиторий
 
@@ -153,15 +205,16 @@ helm repo add nora https://getnora-io.github.io/helm-charts
 helm repo update
 ```
 
-### Создаём values-файл
+### values-файл генерируется автоматически
 
-```bash
-cat <<EOF > helm-values.yaml
+Файл `helm-values.yaml` создаётся Terraform из шаблона `helm-values.yaml.tpl` с уже подставленным доменом — редактировать его руками не нужно. Для справки его содержимое:
+
+```yaml
 ingress:
   enabled: true
   className: nginx
   hosts:
-    - host: nora-apatsev.duckdns.org
+    - host: ${fqdn}
       paths:
         - path: /
           pathType: Prefix
@@ -173,14 +226,14 @@ ingress:
   tls:
     - secretName: nora-tls
       hosts:
-        - nora-apatsev.duckdns.org
+        - ${fqdn}
 
 persistence:
   enabled: false
 
 config:
   server:
-    public_url: "https://nora-apatsev.duckdns.org"
+    public_url: "https://${fqdn}"
   storage:
     mode: s3
     path: /data/storage
@@ -215,7 +268,6 @@ resources:
   requests:
     memory: 128Mi
     cpu: "0.25"
-EOF
 ```
 
 Указываем только то, что отличается от дефолтов Nora:
@@ -246,13 +298,13 @@ helm upgrade --install nora nora/nora --version 0.4.0 -f helm-values.yaml
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=nora --timeout=120s
 
 # Проверяем health
-curl https://nora-apatsev.duckdns.org/health
+curl https://$NORA_FQDN/health
 
 # Открываем Web UI
-open https://nora-apatsev.duckdns.org/ui/
+open https://$NORA_FQDN/ui/
 ```
 
-После этого NORA доступна по адресу `https://nora-apatsev.duckdns.org`. Web UI покажет dashboard с 13 реестрами.
+После этого NORA доступна по адресу `https://$NORA_FQDN`. Web UI покажет dashboard с 13 реестрами.
 
 ### Создание и использование токенов
 
@@ -262,7 +314,7 @@ NORA поддерживает три роли: `read` (чтение), `write` (�
 
 ```bash
 # Создать токен
-curl -X POST https://nora-apatsev.duckdns.org/api/tokens \
+curl -X POST https://$NORA_FQDN/api/tokens \
   -H "Content-Type: application/json" \
   -d '{
     "username": "admin",
@@ -275,13 +327,13 @@ curl -X POST https://nora-apatsev.duckdns.org/api/tokens \
 
 # проверка токена
 curl -H "Authorization: Bearer nra_82ff3b514d6944a88278aa200da6ca0c" \
-  https://nora-apatsev.duckdns.org/v2/_catalog
+  https://$NORA_FQDN/v2/_catalog
 
 # Использовать токен для npm
-npm config set //nora-apatsev.duckdns.org:_authToken nra_82ff3b514d6944a88278aa200da6ca0c
+npm config set //$NORA_FQDN:_authToken nra_82ff3b514d6944a88278aa200da6ca0c
 
 # Docker login с токеном (токен в качестве пароля, любое имя пользователя)
-docker login nora-apatsev.duckdns.org -u token -p nra_82ff3b514d6944a88278aa200da6ca0c
+docker login $NORA_FQDN -u token -p nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
 ## Использование: примеры для каждого формата
@@ -293,11 +345,11 @@ docker login nora-apatsev.duckdns.org -u token -p nra_82ff3b514d6944a88278aa200d
 docker pull nginx:alpine
 
 # Пушим образ
-docker tag nginx:alpine nora-apatsev.duckdns.org/myapp:1.0
-docker push nora-apatsev.duckdns.org/myapp:1.0
+docker tag nginx:alpine $NORA_FQDN/myapp:1.0
+docker push $NORA_FQDN/myapp:1.0
 
 # Пуллим образ из NORA
-docker pull nora-apatsev.duckdns.org/myapp:1.0
+docker pull $NORA_FQDN/myapp:1.0
 ```
 
 NORA полностью совместима с Docker Registry v2 API, поэтому все стандартные команды `docker` работают без изменений.
@@ -306,7 +358,7 @@ NORA полностью совместима с Docker Registry v2 API, поэт
 
 ```bash
 # Настройка реестра для проекта
-npm config set registry https://nora-apatsev.duckdns.org/npm/
+npm config set registry https://$NORA_FQDN/npm/
 
 # Установка пакета (NORA проксирует запрос в npmjs.org и кэширует)
 npm install lodash
@@ -337,15 +389,15 @@ EOF
 
 cd test-npm-pkg
 
-npm config set //nora-apatsev.duckdns.org/npm/:_authToken nra_82ff3b514d6944a88278aa200da6ca0c
+npm config set //$NORA_FQDN/npm/:_authToken nra_82ff3b514d6944a88278aa200da6ca0c
 
 # Публикуем (запускается из директории test-npm-pkg)
-npm publish --registry https://nora-apatsev.duckdns.org/npm/
+npm publish --registry https://$NORA_FQDN/npm/
 
 # Проверяем установку
 cd .. && mkdir test-install && cd test-install
 npm init -y
-npm install @test/hello-world --registry https://nora-apatsev.duckdns.org/npm/
+npm install @test/hello-world --registry https://$NORA_FQDN/npm/
 node -e "const hello = require('@test/hello-world'); console.log(hello());"
 ```
 
@@ -360,13 +412,13 @@ test-npm-pkg/
 Или через `.npmrc` в проекте:
 
 ```
-registry=https://nora-apatsev.duckdns.org/npm/
+registry=https://$NORA_FQDN/npm/
 ```
 
 Scoped-пакеты тоже работают:
 
 ```bash
-npm install @babel/core --registry https://nora-apatsev.duckdns.org/npm/
+npm install @babel/core --registry https://$NORA_FQDN/npm/
 ```
 
 ### PyPI
@@ -380,7 +432,7 @@ source .venv/bin/activate
 python3 -m ensurepip --upgrade
 
 # Установка пакета через NORA (с токеном)
-python3 -m pip install --index-url https://token:nra_82ff3b514d6944a88278aa200da6ca0c@nora-apatsev.duckdns.org/simple/ flask
+python3 -m pip install --index-url https://token:nra_82ff3b514d6944a88278aa200da6ca0c@$NORA_FQDN/simple/ flask
 ```
 
 Пример минимального Python-пакета для публикации:
@@ -400,14 +452,14 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install build twine
 python -m build
-twine upload --repository-url https://token:nra_82ff3b514d6944a88278aa200da6ca0c@nora-apatsev.duckdns.org/simple/ dist/*
+twine upload --repository-url https://token:nra_82ff3b514d6944a88278aa200da6ca0c@$NORA_FQDN/simple/ dist/*
 ```
 
 Для постоянной настройки создайте `~/.pip/pip.conf`:
 
 ```ini
 [global]
-index-url = https://nora-apatsev.duckdns.org/simple/
+index-url = https://$NORA_FQDN/simple/
 ```
 
 NORA поддерживает PEP 503 (HTML) и PEP 691 (JSON) — современные клиенты pip автоматически выбирают JSON API.
@@ -423,7 +475,7 @@ test-maven-pkg/
 └── src/main/java/com/example/HelloNora.java
 ```
 
-Создайте `pom.xml` с описанием артефакта и адресом репозитория:
+Создайте `pom.xml` с описанием артефакта и адресом репозитория (кавычки в `'EOF'` не используем — так shell подставит `$NORA_FQDN` в файл автоматически):
 
 ```bash
 cat <<EOF >  test-maven-pkg/pom.xml
@@ -452,7 +504,7 @@ cat <<EOF >  test-maven-pkg/pom.xml
         <repository>
             <id>nora</id>
             <name>NORA Maven Repository</name>
-            <url>https://nora-apatsev.duckdns.org/maven2</url>
+            <url>https://$NORA_FQDN/maven2</url>
         </repository>
     </distributionManagement>
 </project>
@@ -510,7 +562,7 @@ Helm-чарты хранятся через Docker/OCI endpoint. Для тест
 mkdir -p test-helm-pkg
 
 # Авторизация в реестре
-helm registry login nora-apatsev.duckdns.org -u admin -p your-password
+helm registry login $NORA_FQDN -u admin -p your-password
 
 # Создаём чарт
 cd test-helm-pkg
@@ -520,13 +572,13 @@ helm create mychart
 helm package mychart
 
 # Публикация чарта
-helm push mychart-0.1.0.tgz oci://nora-apatsev.duckdns.org/helm
+helm push mychart-0.1.0.tgz oci://$NORA_FQDN/helm
 
 # Скачивание чарта
-helm pull oci://nora-apatsev.duckdns.org/helm/mychart --version 0.1.0
+helm pull oci://$NORA_FQDN/helm/mychart --version 0.1.0
 
 # Установка чарта из NORA
-helm install myrelease oci://nora-apatsev.duckdns.org/helm/mychart --version 0.1.0
+helm install myrelease oci://$NORA_FQDN/helm/mychart --version 0.1.0
 ```
 
 ### Go modules
@@ -545,19 +597,19 @@ go mod init test-go-pkg
 
 ```bash
 # Глобально через go env (рекомендуется)
-go env -w GOPROXY=https://token:nra_82ff3b514d6944a88278aa200da6ca0c@nora-apatsev.duckdns.org/go,direct
+go env -w GOPROXY=https://token:nra_82ff3b514d6944a88278aa200da6ca0c@$NORA_FQDN/go,direct
 
 # Или через переменную окружения
-export GOPROXY=https://token:nra_82ff3b514d6944a88278aa200da6ca0c@nora-apatsev.duckdns.org/go,direct
+export GOPROXY=https://token:nra_82ff3b514d6944a88278aa200da6ca0c@$NORA_FQDN/go,direct
 ```
 
 **Вариант 2: Через .netrc (рекомендуется для CI/CD)**
 
 ```bash
-echo "machine nora-apatsev.duckdns.org login token password nra_82ff3b514d6944a88278aa200da6ca0c" >> ~/.netrc
+echo "machine $NORA_FQDN login token password nra_82ff3b514d6944a88278aa200da6ca0c" >> ~/.netrc
 chmod 600 ~/.netrc
 
-go env -w GOPROXY=https://nora-apatsev.duckdns.org/go,direct
+go env -w GOPROXY=https://$NORA_FQDN/go,direct
 ```
 
 Теперь go get работает через NORA:
@@ -590,7 +642,7 @@ mkdir -p test-cargo-pkg/.cargo test-cargo-pkg/src
 ```bash
 cat <<EOF >  test-cargo-pkg/.cargo/config.toml
 [registries.nora]
-index = "sparse+https://nora-apatsev.duckdns.org/cargo/"
+index = "sparse+https://$NORA_FQDN/cargo/"
 
 [registry]
 global-credential-providers = ["cargo:token"]
@@ -655,7 +707,7 @@ NORA реализует Cargo sparse index (RFC 2789) — не нужно хра
 ```hcl
 provider_installation {
   network_mirror {
-    url = "https://nora-apatsev.duckdns.org/terraform/"
+    url = "https://$NORA_FQDN/terraform/"
   }
 }
 ```
@@ -664,7 +716,7 @@ provider_installation {
 
 ```bash
 terraform init
-# Provider hashicorp/aws will be downloaded from nora-apatsev.duckdns.org
+# Provider hashicorp/aws will be downloaded from $NORA_FQDN
 ```
 
 ### RubyGems
@@ -677,13 +729,13 @@ NORA поддерживает proxy/cache для RubyGems — проксируе
 
 ```bash
 # Глобально (рекомендуется)
-bundle config mirror.https://rubygems.org https://nora-apatsev.duckdns.org/gems/
+bundle config mirror.https://rubygems.org https://$NORA_FQDN/gems/
 
 # Или через .bundle/config в проекте
 mkdir -p .bundle
 cat <<EOF >  .bundle/config
 ---
-BUNDLE_MIRROR__HTTPS://RUBYGEMS__ORG/: "https://nora-apatsev.duckdns.org/gems/"
+BUNDLE_MIRROR__HTTPS://RUBYGEMS__ORG/: "https://$NORA_FQDN/gems/"
 EOF
 ```
 
@@ -700,14 +752,14 @@ bundle install
 ```bash
 # Авторизация (токен используется как пароль, любое имя пользователя)
 curl -u "token:nra_82ff3b514d6944a88278aa200da6ca0c" \
-  https://nora-apatsev.duckdns.org/api/v1/gems
+  https://$NORA_FQDN/api/v1/gems
 
 # Собираем гем из .gemspec
 gem build mygem.gemspec
 
 # Публикуем
 gem push mygem-0.1.0.gem \
-  --host https://nora-apatsev.duckdns.org/gems/ \
+  --host https://$NORA_FQDN/gems/ \
   --key nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
@@ -732,7 +784,7 @@ Gem::Specification.new do |s|
   s.authors     = ["Test"]
   s.email       = "test@example.com"
   s.files       = ["lib/test_ruby_pkg.rb"]
-  s.homepage    = "https://nora-apatsev.duckdns.org"
+  s.homepage    = "https://$NORA_FQDN"
   s.license     = "MIT"
 end
 EOF
@@ -746,7 +798,7 @@ end
 EOF
 
 cat <<EOF >  test-ruby-pkg/Gemfile
-source "https://nora-apatsev.duckdns.org/gems/"
+source "https://$NORA_FQDN/gems/"
 gemspec
 EOF
 ```
@@ -754,19 +806,19 @@ EOF
 ```bash
 cd test-ruby-pkg
 gem build test-ruby-pkg.gemspec
-gem push test-ruby-pkg-0.1.0.gem --host https://nora-apatsev.duckdns.org/gems/
+gem push test-ruby-pkg-0.1.0.gem --host https://$NORA_FQDN/gems/
 ```
 
 #### Установка из NORA
 
 ```bash
 # Через Gemfile
-echo 'source "https://nora-apatsev.duckdns.org/gems/"' > Gemfile
+echo 'source "https://$NORA_FQDN/gems/"' > Gemfile
 echo 'gem "test-ruby-pkg"' >> Gemfile
 bundle install
 
 # Или через gem install
-gem install test-ruby-pkg --source https://nora-apatsev.duckdns.org/gems/
+gem install test-ruby-pkg --source https://$NORA_FQDN/gems/
 ```
 
 ### NuGet (.NET)
@@ -777,7 +829,7 @@ NORA поддерживает NuGet V3 API — проксирует запрос
 
 ```bash
 # Добавляем NORA как источник NuGet-пакетов
-dotnet nuget add source https://nora-apatsev.duckdns.org/nuget/v3/index.json \
+dotnet nuget add source https://$NORA_FQDN/nuget/v3/index.json \
   -n nora \
   -u token \
   -p nra_82ff3b514d6944a88278aa200da6ca0c \
@@ -785,7 +837,7 @@ dotnet nuget add source https://nora-apatsev.duckdns.org/nuget/v3/index.json \
 
 # Или через nuget CLI
 nuget source add -Name nora \
-  -Source https://nora-apatsev.duckdns.org/nuget/v3/index.json \
+  -Source https://$NORA_FQDN/nuget/v3/index.json \
   -UserName token \
   -Password nra_82ff3b514d6944a88278aa200da6ca0c
 ```
@@ -796,7 +848,7 @@ nuget source add -Name nora \
 <?xml version="1.0" encoding="utf-8"?>
 <configuration>
   <packageSources>
-    <add key="nora" value="https://nora-apatsev.duckdns.org/nuget/v3/index.json" />
+    <add key="nora" value="https://$NORA_FQDN/nuget/v3/index.json" />
   </packageSources>
   <packageSourceCredentials>
     <nora>
@@ -855,14 +907,14 @@ dotnet pack -c Release
 
 # Публикуем в NORA
 dotnet nuget push bin/Release/TestNugetPkg.0.1.0.nupkg \
-  --source https://nora-apatsev.duckdns.org/nuget/v3/index.json \
+  --source https://$NORA_FQDN/nuget/v3/index.json \
   --api-key nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
 #### Установка из NORA
 
 ```bash
-dotnet add package TestNugetPkg --source https://nora-apatsev.duckdns.org/nuget/v3/index.json
+dotnet add package TestNugetPkg --source https://$NORA_FQDN/nuget/v3/index.json
 ```
 
 ### Ansible Galaxy
@@ -874,7 +926,7 @@ NORA поддерживает Ansible Galaxy API — проксирует зап
 ```bash
 # Установка коллекции из NORA (с аутентификацией)
 ansible-galaxy collection install community.general \
-  -s https://nora-apatsev.duckdns.org/ansible/ \
+  -s https://$NORA_FQDN/ansible/ \
   --token nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
@@ -885,7 +937,7 @@ ansible-galaxy collection install community.general \
 server_list = nora
 
 [galaxy_server.nora]
-url = https://nora-apatsev.duckdns.org/ansible/
+url = https://$NORA_FQDN/ansible/
 token = nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
@@ -953,7 +1005,7 @@ ansible-galaxy collection build
 
 # Публикуем в NORA
 ansible-galaxy collection publish test-hello_nora-0.1.0.tar.gz \
-  --server https://nora-apatsev.duckdns.org/ansible/ \
+  --server https://$NORA_FQDN/ansible/ \
   --token nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
@@ -966,7 +1018,7 @@ cd test-hello-nora
 
 # Публикуем роль в NORA
 ansible-galaxy role import \
-  --server https://nora-apatsev.duckdns.org/ansible/ \
+  --server https://$NORA_FQDN/ansible/ \
   --token nra_82ff3b514d6944a88278aa200da6ca0c
 ```
 
@@ -978,7 +1030,7 @@ NORA поддерживает Conan V2 API — проксирует запрос
 
 ```bash
 # Добавляем NORA как удалённый репозиторий Conan
-conan remote add nora https://nora-apatsev.duckdns.org/conan
+conan remote add nora https://$NORA_FQDN/conan
 
 # Авторизация
 conan remote login nora -p nra_82ff3b514d6944a88278aa200da6ca0c
@@ -998,7 +1050,7 @@ core.sources:download_cache=~/.conan2/download_cache
   "remotes": [
     {
       "name": "nora",
-      "url": "https://nora-apatsev.duckdns.org/conan",
+      "url": "https://$NORA_FQDN/conan",
       "verify_ssl": true
     }
   ]
@@ -1129,16 +1181,16 @@ NORA поддерживает pub.dev API — проксирует запрос�
 
 ```bash
 # Указываем NORA как хост для pub
-export PUB_HOSTED_URL=https://nora-apatsev.duckdns.org/pub
+export PUB_HOSTED_URL=https://$NORA_FQDN/pub
 
 # Для Flutter
-export FLUTTER_STORAGE_BASE_URL=https://nora-apatsev.duckdns.org/pub
+export FLUTTER_STORAGE_BASE_URL=https://$NORA_FQDN/pub
 ```
 
 Для постоянной настройки добавьте в `~/.bashrc` или `~/.zshrc`:
 
 ```bash
-echo 'export PUB_HOSTED_URL=https://nora-apatsev.duckdns.org/pub' >> ~/.bashrc
+echo 'export PUB_HOSTED_URL=https://$NORA_FQDN/pub' >> ~/.bashrc
 ```
 
 #### Установка зависимостей
@@ -1171,7 +1223,7 @@ cat <<EOF >  test-pub-pkg/pubspec.yaml
 name: test_pub_pkg
 description: Test Dart package for NORA registry
 version: 0.1.0
-homepage: https://nora-apatsev.duckdns.org
+homepage: https://$NORA_FQDN
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -1203,10 +1255,10 @@ cd test-pub-pkg
 export PUB_TOKEN=nra_82ff3b514d6944a88278aa200da6ca0c
 
 # Публикуем в NORA
-dart pub publish --server=https://nora-apatsev.duckdns.org/pub
+dart pub publish --server=https://$NORA_FQDN/pub
 
 # Или для Flutter
-flutter pub publish --server=https://nora-apatsev.duckdns.org/pub
+flutter pub publish --server=https://$NORA_FQDN/pub
 ```
 
 #### Использование в проекте
@@ -1384,15 +1436,14 @@ Chart сам создаёт volume и volumeMount, а также выставл�
 
 Все эти механизмы настраиваются через переменные окружения, TOML-конфиг или YAML в Helm values, и работают поверх существующей proxy/cache архитектуры NORA без дополнительных зависимостей.
 
-Полный пример `helm-values.yaml` с включённой защитой от supply chain атак:
+Полный пример `helm-values.yaml.tpl` с включённой защитой от supply chain атак (домен подставит Terraform):
 
 ```yaml
-cat <<EOF > helm-values.yaml
 ingress:
   enabled: true
   className: nginx
   hosts:
-    - host: nora-apatsev.duckdns.org
+    - host: ${fqdn}
       paths:
         - path: /
           pathType: Prefix
@@ -1404,14 +1455,14 @@ ingress:
   tls:
     - secretName: nora-tls
       hosts:
-        - nora-apatsev.duckdns.org
+        - ${fqdn}
 
 persistence:
   enabled: false
 
 config:
   server:
-    public_url: "https://nora-apatsev.duckdns.org"
+    public_url: "https://${fqdn}"
   storage:
     mode: s3
     path: /data/storage
@@ -1460,7 +1511,6 @@ resources:
   requests:
     memory: 128Mi
     cpu: "0.25"
-EOF
 ```
 
 ## Air-gapped: работа в изолированных средах
@@ -1472,19 +1522,19 @@ NORA имеет встроенную утилиту `nora mirror` для пре�
 ```bash
 # npm — по package-lock.json
 nora mirror npm --lockfile package-lock.json \
-  --registry https://nora-apatsev.duckdns.org
+  --registry https://$NORA_FQDN
 
 # pip — по requirements.txt
 nora mirror pip --requirement requirements.txt \
-  --registry https://nora-apatsev.duckdns.org
+  --registry https://$NORA_FQDN
 
 # Cargo — по Cargo.lock
 nora mirror cargo --lockfile Cargo.lock \
-  --registry https://nora-apatsev.duckdns.org
+  --registry https://$NORA_FQDN
 
 # Maven — по pom.xml
 nora mirror maven --pom pom.xml \
-  --registry https://nora-apatsev.duckdns.org
+  --registry https://$NORA_FQDN
 ```
 
 ### Кэширование Docker-образов
@@ -1492,7 +1542,7 @@ nora mirror maven --pom pom.xml \
 ```bash
 nora mirror docker \
   --images "nginx:latest,redis:7,node:20-alpine,python:3.12" \
-  --registry https://nora-apatsev.duckdns.org
+  --registry https://$NORA_FQDN
 ```
 
 ### Работа в air-gapped среде
@@ -1507,10 +1557,10 @@ NORA отдаёт метрики в формате Prometheus по эндпои�
 
 ```bash
 # Общий health check
-curl https://nora-apatsev.duckdns.org/health
+curl https://$NORA_FQDN/health
 
 # Readiness probe
-curl https://nora-apatsev.duckdns.org/ready
+curl https://$NORA_FQDN/ready
 ```
 
 ### Prometheus
@@ -1522,7 +1572,7 @@ scrape_configs:
   - job_name: 'nora'
     scrape_interval: 15s
     static_configs:
-      - targets: ['nora-apatsev.duckdns.org:443']
+      - targets: ['$NORA_FQDN:443']
     scheme: https
     metrics_path: /metrics
 ```
@@ -1605,9 +1655,9 @@ kubectl describe order
 - Подождать 1–5 минут — Let's Encrypt ACME HTTP-01 challenge требует времени
 - Проверить, что ClusterIssuer в статусе Ready: `kubectl get clusterissuer letsencrypt-prod`
 - Проверить логи cert-manager: `kubectl logs -n cert-manager deploy/cert-manager`
-- Убедиться, что DNS-запись `nora-apatsev.duckdns.org` резолвится на правильный IP ingress-контроллера:
+- Убедиться, что DNS-запись `$NORA_FQDN` резолвится на правильный IP ingress-контроллера (sslip.io делает это автоматически, но стоит проверить, что в домен подставлен верный IP):
   ```bash
-  dig nora-apatsev.duckdns.org +short
+  dig $NORA_FQDN +short
   kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
   ```
 - Если cert-manager не может достучаться до `/.well-known/acme-challenge/` — проверить, что ingress-nginx работает и нет конфликтов Ingress-правил
@@ -1616,7 +1666,7 @@ kubectl describe order
 
 ```bash
 # Проверяем, что NORA отвечает
-curl https://nora-apatsev.duckdns.org/v2/
+curl https://$NORA_FQDN/v2/
 
 # Проверяем ingress
 kubectl get ingress

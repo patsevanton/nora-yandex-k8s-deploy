@@ -1,0 +1,58 @@
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: ${fqdn}
+      paths:
+        - path: /
+          pathType: Prefix
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    - secretName: nora-tls
+      hosts:
+        - ${fqdn}
+
+persistence:
+  enabled: false
+
+config:
+  server:
+    public_url: "https://${fqdn}"
+  storage:
+    mode: s3
+    path: /data/storage
+    s3_url: https://storage.yandexcloud.net
+    bucket: nora-storage-anton-patsev
+    s3_region: ru-central1
+  registries:
+    enable: "all"
+  auth:
+    enabled: true
+    anonymous_read: true # Для terraform
+    htpasswd:
+      existingSecret: nora-htpasswd
+      secretKey: users.htpasswd
+
+extraEnv:
+  - name: NORA_STORAGE_S3_ACCESS_KEY
+    valueFrom:
+      secretKeyRef:
+        name: nora-s3-credentials
+        key: S3_ACCESS_KEY
+  - name: NORA_STORAGE_S3_SECRET_KEY
+    valueFrom:
+      secretKeyRef:
+        name: nora-s3-credentials
+        key: S3_SECRET_KEY
+
+resources:
+  limits:
+    memory: 512Mi
+    cpu: "1"
+  requests:
+    memory: 128Mi
+    cpu: "0.25"

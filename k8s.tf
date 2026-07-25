@@ -126,3 +126,7 @@ output "k8s_cluster_credentials" {
 output "ingress_public_ip" {
   value = local.ingress_ip
 }
+
+output "nora_fqdn" {
+  value = local.nora_fqdn
+}

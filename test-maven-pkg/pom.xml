@@ -23,7 +23,7 @@
         <repository>
             <id>nora</id>
             <name>NORA Maven Repository</name>
-            <url>https://nora-apatsev.duckdns.org/maven2</url>
+            <url>https://nora.EXAMPLE.sslip.io/maven2</url> <!-- сгенерируйте pom.xml командой из README — $NORA_FQDN подставится автоматически -->
         </repository>
     </distributionManagement>
 </project>

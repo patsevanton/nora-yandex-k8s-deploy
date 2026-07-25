@@ -1,2 +1,3 @@
-duckdns_domain = "nora-apatsev"
-duckdns_token  = "your-duckdns-token-here"
+# Домен формируется автоматически из публичного IP ingress-контроллера:
+# nora.<INGRESS_IP>.sslip.io
+# Переменные для DNS не требуются — sslip.io не нуждается в регистрации и токенах.
