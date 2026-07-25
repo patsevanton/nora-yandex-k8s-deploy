@@ -4,7 +4,7 @@
 
 Каждый разработчик сталкивался с проблемой хранения артефактов: Docker-образы, npm-пакеты, Maven-артефакты, Python-колёсики. Вариантов обычно два — использовать публичные реестры (Docker Hub, npmjs.org, PyPI) или поднимать Nexus / Artifactory / Harbor. Публичные реестры ненадёжны из-за rate limit и блокировок, Nexus и Artifactory тяжёлые: Java, PostgreSQL, гигабайты RAM, десятки минут на старт.
 
-[NORA](https://github.com/getnora-io/nora) — open-source реестр артефактов на Rust. Один бинарник < 27 МБ, < 50 МБ RAM в простое, старт за 3 секунды. Поддерживает 13 форматов: Docker, Maven, npm, PyPI, Cargo, Go, Raw, RubyGems, Terraform, Ansible Galaxy, NuGet, Pub (Dart/Flutter), Conan (C/C++). Плюс Helm-чарты через OCI.
+[NORA](https://github.com/getnora-io/nora) — open-source реестр артефактов на Rust. Один бинарник < 27 МБ, < 50 МБ RAM в простое, старт за 3 секунды. Поддерживает 15 форматов: Docker, Maven, npm, PyPI, Cargo, Go, Raw, RubyGems, Terraform, Ansible Galaxy, NuGet, Pub (Dart/Flutter), Conan (C/C++), RPM (yum/dnf), Debian/APT. Плюс Helm-чарты через OCI.
 
 В этой статье мы развернём NORA в Kubernetes на Yandex Managed Kubernetes с помощью Terraform и Helm, настроим ingress-nginx, выпустим TLS-сертификат через cert-manager, а затем попробуем все основные сценарии использования.
 
@@ -16,7 +16,7 @@
 | Время старта | < 3 сек | 30–60 сек | 30–60 сек | 30–60 сек |
 | Зависимости | Нет | Java 11+ | Java 11+ | Go, PostgreSQL, Redis |
 | База данных | Файловая система | OrientDB/PostgreSQL | OrientDB/PostgreSQL | PostgreSQL |
-| Количество форматов | 13 | 30+ | 30+ | Docker, OCI, Helm, CNAB |
+| Количество форматов | 15 | 30+ | 30+ | Docker, OCI, Helm, CNAB |
 | S3-хранилище | Да | Платная версия | Платная версия | Да |
 | Цена | MIT, бесплатно | Community бесплатно | Community бесплатно | Apache 2.0, бесплатно |
 | Ключевые особенности | Бинарник на Rust, S3, карантин свежих пакетов, блокировка уязвимых пакетов по версиям | 30+ форматов, LDAP, репликация, плагины, Web UI, REST API | 30+ форматов, LDAP, репликация, плагины, Web UI, REST API, Xray (сканирование CVE) | Docker/OCI репестр, Helm charts, сканирование CVE, репликация, RBAC, Web UI |
@@ -304,7 +304,7 @@ curl https://$NORA_FQDN/health
 open https://$NORA_FQDN/ui/
 ```
 
-После этого NORA доступна по адресу `https://$NORA_FQDN`. Web UI покажет dashboard с 13 реестрами.
+После этого NORA доступна по адресу `https://$NORA_FQDN`. Web UI покажет dashboard с 15 реестрами.
 
 ### Создание и использование токенов
 
@@ -1284,7 +1284,7 @@ NORA включает многоуровневую защиту от атак н
 
 ### Min Release Age — блокировка свежих пакетов
 
-Одна строка в конфиге блокирует пакеты, опубликованные менее N дней назад. Большинство вредоносных пакетов обнаруживаются в течение 1–3 дней, поэтому 7 дней — безопасный буфер. Аналогичная функция есть в `.npmrc` (`min-release-age=7`) и `uv.toml` (`exclude-newer = "7 days"`), но NORA поддерживает все 13 форматов реестров и per-registry переопределения.
+Одна строка в конфиге блокирует пакеты, опубликованные менее N дней назад. Большинство вредоносных пакетов обнаруживаются в течение 1–3 дней, поэтому 7 дней — безопасный буфер. Аналогичная функция есть в `.npmrc` (`min-release-age=7`) и `uv.toml` (`exclude-newer = "7 days"`), но NORA поддерживает все 15 форматов реестров и per-registry переопределения.
 
 **Настройка в `helm-values.yaml` (секция `config.curation`):**
 
@@ -1332,7 +1332,7 @@ NORA позволяет блокировать пакеты с известны�
 }
 ```
 
-Правила поддерживают glob-паттерны (`*`, `foo*`, `*foo`, `foo.**` для Maven groupId, `foo/**` для Go модулей) и работают со всеми 13 форматами реестров.
+Правила поддерживают glob-паттерны (`*`, `foo*`, `*foo`, `foo.**` для Maven groupId, `foo/**` для Go модулей) и работают со всеми 15 форматами реестров.
 
 **Включение в `helm-values.yaml`:**
 
@@ -1423,7 +1423,7 @@ config:
 
 Chart сам создаёт volume и volumeMount, а также выставляет `curation.blocklist_path` / `curation.allowlist_path` в конфиге NORA. Не нужно вручную патчить Deployment — ни `kubectl patch`, ни `kubectl cp` не нужны.
 
-Правила поддерживают glob-паттерны (`*`, `foo*`, `*foo`, `foo.**` для Maven groupId, `foo/**` для Go модулей) и работают со всеми 13 форматами реестров.
+Правила поддерживают glob-паттерны (`*`, `foo*`, `*foo`, `foo.**` для Maven groupId, `foo/**` для Go модулей) и работают со всеми 15 форматами реестров.
 
 В режиме `audit` совпадения логируются, но не блокируются — удобно для dry-run перед включением в production.
 
@@ -1690,7 +1690,7 @@ NORA — это современная альтернатива Nexus, Artifacto
 
 - **Простота** — один бинарник, один конфиг, S3-бакет. Данные живут в Object Storage, stateless-поды.
 - **Производительность** — < 3 секунды на старт, < 50 МБ RAM. Rust, Tokio, Axum.
-- **13 форматов** — Docker, Maven, npm, PyPI, Cargo, Go, Raw, RubyGems, Terraform, Ansible, NuGet, Pub, Conan.
+- **15 форматов** — Docker, Maven, npm, PyPI, Cargo, Go, Raw, RubyGems, Terraform, Ansible, NuGet, Pub, Conan, RPM, Debian/APT.
 - **Безопасность** — OpenSSF Scorecard, подписанные релизы, SBOM, 1200+ тестов, блокировка свежих пакетов (min-release-age), CVE blocklist, digest quarantine, namespace isolation.
 - **Air-gapped ready** — встроенное зеркалирование для изолированных сред.
 
