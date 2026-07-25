@@ -1650,3 +1650,4 @@ NORA — это современная альтернатива Nexus, Artifacto
 - Документация: [getnora.dev](https://getnora.dev)
 - Telegram: [t.me/getnora](https://t.me/getnora)
 - Artifact Hub: [artifacthub.io/packages/helm/nora/nora](https://artifacthub.io/packages/helm/nora/nora)
+
