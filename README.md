@@ -290,7 +290,7 @@ resources:
 ### Устанавливаем
 
 ```bash
-helm upgrade --install nora nora/nora --version 0.4.3 -f helm-values.yaml
+helm upgrade --install nora nora/nora --version 0.4.4 -f helm-values.yaml
 ```
 
 ### Проверяем
