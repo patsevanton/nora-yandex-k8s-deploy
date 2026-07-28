@@ -1,0 +1,214 @@
+# =============================================================================
+# nora-vless-proxy.yaml
+#
+# Вариант 3: mihomo (ядро Clash.Meta, ест VLESS-подписку напрямую) как
+# ОТДЕЛЬНЫЙ Deployment + Service в кластере. NORA ходит наружу через него:
+#
+#   NORA pod ──HTTPS_PROXY──► Service mihomo-proxy:1080 ──VLESS──► upstream
+#
+# Плюс: не нужен sidecar/kustomize/форк чарта NORA — всё голыми манифестами.
+# Минус: прокси доступен всему namespace/кластеру, поэтому:
+#   - на mixed-порту включена аутентификация (authentication),
+#   - NetworkPolicy ограничивает доступ только подами NORA (если CNI
+#     поддерживает NetworkPolicy — Calico/Cilium; flannel игнорирует).
+#
+# Перед применением заменить:
+#   1) URL подписки в Secret (proxy-providers.sub.url)
+#   2) пароль CHANGE_ME_LONG_PASSWORD (здесь и в HTTPS_PROXY у NORA)
+#
+# Применение:
+#   kubectl create namespace nora        # если ещё нет
+#   kubectl apply -f nora-vless-proxy.yaml
+#   # затем обновить NORA с values из блока в конце файла
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Конфиг mihomo + URL подписки (секрет!) — поэтому Secret, а не ConfigMap
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nora-vless-proxy
+  namespace: nora
+stringData:
+  config.yaml: |
+    mixed-port: 1080              # HTTP + SOCKS5 на одном порту
+    bind-address: "*"             # слушаем не только localhost (см. NetworkPolicy)
+    allow-lan: true
+    authentication:               # без пароля прокси закрыт даже внутри кластера
+      - "nora:CHANGE_ME_LONG_PASSWORD"
+    log-level: warning
+    ipv6: false
+    external-controller: 127.0.0.1:9090   # только localhost: probes + отладка
+
+    proxy-providers:
+      sub:
+        type: http
+        url: "https://sub.example.com/ВАША_VLESS_ПОДПИСКА"
+        interval: 3600            # обновлять подписку раз в час
+        path: ./providers/sub.yaml
+        health-check:
+          enable: true
+          url: https://www.gstatic.com/generate_204
+          interval: 300
+
+    proxies: []                   # всё приходит из провайдера подписки
+
+    proxy-groups:
+      - name: auto
+        type: url-test            # авто-выбор живого/быстрого сервера
+        use: [sub]
+        tolerance: 50
+        url: https://www.gstatic.com/generate_204
+
+    rules:
+      # внутрикластерное — мимо прокси (страховка к NO_PROXY на стороне NORA)
+      - DOMAIN-SUFFIX,cluster.local,DIRECT
+      - DOMAIN-SUFFIX,svc,DIRECT
+      - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
+      - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+      - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+      - MATCH,auto
+
+---
+# -----------------------------------------------------------------------------
+# Deployment
+# -----------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mihomo-proxy
+  namespace: nora
+  labels:
+    app: mihomo-proxy
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mihomo-proxy
+  template:
+    metadata:
+      labels:
+        app: mihomo-proxy
+    spec:
+      containers:
+        - name: mihomo
+          image: metacubex/mihomo:v1.19.29
+          args: ["-d", "/etc/mihomo"]
+          ports:
+            - name: proxy
+              containerPort: 1080
+            - name: ctl
+              containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/mihomo/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            # кэш скачанной подписки (директория из Secret монтируется ro,
+            # поэтому providers — отдельный writable emptyDir)
+            - name: providers
+              mountPath: /etc/mihomo/providers
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 9090
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 1080
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 20m
+              memory: 48Mi
+            limits:
+              memory: 192Mi
+      volumes:
+        - name: config
+          secret:
+            secretName: nora-vless-proxy
+        - name: providers
+          emptyDir: {}
+
+---
+# -----------------------------------------------------------------------------
+# Service — NORA обращается по имени mihomo-proxy (тот же namespace)
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: mihomo-proxy
+  namespace: nora
+  labels:
+    app: mihomo-proxy
+spec:
+  type: ClusterIP
+  selector:
+    app: mihomo-proxy
+  ports:
+    - name: proxy
+      port: 1080
+      targetPort: 1080
+
+---
+# -----------------------------------------------------------------------------
+# NetworkPolicy: к прокси могут обращаться только поды NORA.
+# Бесполезен, если CNI не поддерживает NetworkPolicy — тогда защита только
+# паролем в authentication (см. Secret выше).
+# -----------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mihomo-proxy-allow-nora
+  namespace: nora
+spec:
+  podSelector:
+    matchLabels:
+      app: mihomo-proxy
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        # метки пода, которые ставит официальный helm-чарт NORA
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: nora
+      ports:
+        - port: 1080
+          protocol: TCP
+
+# =============================================================================
+# NORA: добавить в values.yaml официального чарта (getnora-io/helm-charts)
+# и выполнить: helm upgrade nora nora/nora -n nora -f values.yaml
+#
+# extraEnv:
+#   - name: HTTPS_PROXY
+#     value: "http://nora:CHANGE_ME_LONG_PASSWORD@mihomo-proxy:1080"
+#   - name: https_proxy
+#     value: "http://nora:CHANGE_ME_LONG_PASSWORD@mihomo-proxy:1080"
+#   - name: NO_PROXY
+#     value: "127.0.0.1,localhost,.svc,.cluster.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+#   - name: no_proxy
+#     value: "127.0.0.1,localhost,.svc,.cluster.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+#
+# NORA (reqwest) подхватит env-прокси без изменений кода; в логе при старте
+# появится "Outbound proxy detected from environment" (креды замаскируются).
+#
+# Проверка:
+#   kubectl -n nora logs deploy/mihomo-proxy                 # подписка скачалась
+#   kubectl -n nora exec deploy/nora -- sh -c \
+#     'wget -qO- --header="Proxy-Authorization: Basic $(echo -n nora:CHANGE_ME_LONG_PASSWORD|base64)" \
+#      https://registry.terraform.io/.well-known/terraform.json \
+#      --proxy=on -e http_proxy=http://mihomo-proxy:1080'
+#   # или просто смотрим, что метрика nora_upstream_policy_blocked_total
+#   # {registry="terraform",reason="geo"} перестала расти
+#
+# Если URL подписки сам заблокирован провайдером: скачайте подписку вручную,
+# вставьте серверы в `proxies:` (формат clash) вместо proxy-providers и
+# замените `use: [sub]` на имена/фильтр этих серверов в proxy-groups.
+# =============================================================================
