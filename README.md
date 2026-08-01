@@ -76,24 +76,42 @@ echo $NORA_FQDN
 
 Далее в примерах используется `$NORA_FQDN`. Домен формируется автоматически через [sslip.io](https://sslip.io) — бесплатный wildcard-DNS, который не требует регистрации и токенов: домен резолвится в IP ingress-контроллера без какой-либо настройки, а Let's Encrypt выдаёт для него валидный TLS-сертификат через HTTP-01 challenge.
 
-## Шаг 2. VLESS-прокси для исходящего трафика NORA
+## Шаг 2. VLESS-прокси для исходящего трафика NORA (Terraform upstream)
 
-Если upstream-реестры (registry.terraform.io, npmjs.org и т.д.) недоступны с IP вашего кластера (geo-блокировки, санкционные ограничения), исходящий трафик NORA можно пустить через VLESS-прокси. Этот шаг нужно выполнить **сразу после `terraform apply`**, чтобы NORA с первого старта ходила наружу через прокси. Если ваши upstream-реестры доступны напрямую — пропустите этот шаг.
+Upstream-реестр Terraform (`registry.terraform.io`, `releases.hashicorp.com`) **гео-блокирован HashiCorp** для IP Yandex Cloud — при прямом обращении возвращается `HTTP 404` со страницей «Content not available in your region». Остальные upstream-реестры (npmjs.org, pypi.org, github.com, storage.yandexcloud.net и т.д.) с IP кластера доступны напрямую. Поэтому исходящий трафик NORA пускается через VLESS-прокси **только для доменов terraform.io / hashicorp.com** — остальные идут напрямую, экономя VLESS-трафик.
+
+Этот шаг нужно выполнить **сразу после `terraform apply`**, чтобы NORA с первого старта ходила к HashiCorp через прокси.
 
 Готовый файл [nora-vless-proxy.yaml](nora-vless-proxy.yaml) поднимает [mihomo](https://github.com/MetaCubeX/mihomo) (ядро Clash.Meta, ест VLESS-подписку напрямую) как отдельный Deployment + Service в кластере:
 
 ```
-NORA pod ──HTTPS_PROXY──► Service mihomo-proxy:1080 ──VLESS──► upstream
+                          ┌── terraform.io / hashicorp.com ──► VLESS ──► upstream
+NORA pod ──HTTPS_PROXY──► mihomo-proxy:1080
+                          └── всё остальное ──► DIRECT (напрямую)
 ```
 
-Плюс: не нужен sidecar/kustomize/форк чарта NORA — всё голыми манифестами.
+Правила маршрутизации в `nora-vless-proxy.yaml` (секция `rules`) отправляют в VLESS только `DOMAIN-SUFFIX,terraform.io` и `DOMAIN-SUFFIX,hashicorp.com`; всё остальное идёт через `DIRECT`. Плюс: не нужен sidecar/kustomize/форк чарта NORA — всё голыми манифестами.
 
 ### Шаг 2.1. Заполнить Secret
 
 Отредактируйте в `nora-vless-proxy.yaml` (секция `kind: Secret`):
 
 1. URL подписки в `proxy-providers.sub.url` — ваша VLESS-подписка.
-2. Пароль `CHANGE_ME_LONG_PASSWORD` — замените на длинный случайный (понадобится далее в `HTTPS_PROXY`).
+
+> Аутентификация на mixed-порту в этом манифесте **не включена** — прокси ходит только по доменам terraform/hashicorp, доступ ограничен NetworkPolicy, а пароль в `HTTPS_PROXY` не нужен (см. `helm-values.yaml`).
+
+**Важно: фильтр зарубежных серверов.** HashiCorp гео-блокирует `registry.terraform.io` для IP России, поэтому VLESS-сервер тоже должен находиться вне РФ. В `proxy-groups.auto` уже заданы `filter` / `exclude-filter`, оставляющие только зарубежные серверы (Нидерланды, Германия, Франция, Финляндия и т.д.) и исключающие РФ-серверы. Если ваша подписка использует другие названия стран — отрегулируйте regex под них, иначе mihomo выберет РФ-сервер и terraform upstream останется заблокированным:
+
+```yaml
+proxy-groups:
+  - name: auto
+    type: url-test
+    use: [sub]
+    filter: "(?i)(Нидерланды|Германия|Франция|Великобритания|Финляндия|Швеция|Польша|Литва|Румыния|Австрия|Швейцария|Норвегия|США|USA|Англия|Европа|EU)"
+    exclude-filter: "(?i)Россия|Russia|Москва|СПб|Москва"
+    tolerance: 50
+    url: https://www.gstatic.com/generate_204
+```
 
 ### Шаг 2.2. Применить манифест
 
@@ -108,42 +126,51 @@ kubectl apply -f nora-vless-proxy.yaml
 kubectl -n nora logs deploy/mihomo-proxy
 ```
 
-### Шаг 2.3. Добавить env-прокси в helm-values.yaml
+### Шаг 2.3. Переменные прокси уже в helm-values.yaml
 
-Допишите в `helm-values.yaml` (сгенерирован Terraform на шаге 1) переменные прокси в **уже существующий** список `extraEnv` — после переменных S3, чтобы не дублировать ключ `extraEnv`:
+Terraform генерирует `helm-values.yaml` из шаблона `helm-values.yaml.tpl` **уже с переменными прокси** (без пароля — аутентификация не используется), поэтому дописывать ничего руками не нужно. Секция `extraEnv` в сгенерированном файле выглядит так:
 
 ```yaml
 extraEnv:
+  - name: NORA_STORAGE_S3_ACCESS_KEY
+    valueFrom:
+      secretKeyRef:
+        name: nora-s3-credentials
+        key: S3_ACCESS_KEY
+  - name: NORA_STORAGE_S3_SECRET_KEY
+    valueFrom:
+      secretKeyRef:
+        name: nora-s3-credentials
+        key: S3_SECRET_KEY
   - name: HTTPS_PROXY
-    value: "http://nora:CHANGE_ME_LONG_PASSWORD@mihomo-proxy.nora.svc.cluster.local:1080"
+    value: "http://mihomo-proxy.nora.svc.cluster.local:1080"
   - name: https_proxy
-    value: "http://nora:CHANGE_ME_LONG_PASSWORD@mihomo-proxy.nora.svc.cluster.local:1080"
+    value: "http://mihomo-proxy.nora.svc.cluster.local:1080"
   - name: NO_PROXY
     value: "127.0.0.1,localhost,.svc,.cluster.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
   - name: no_proxy
     value: "127.0.0.1,localhost,.svc,.cluster.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 ```
 
-Так как NORA в этой статье ставится в namespace `default`, а прокси — в `nora`, используется FQDN сервиса `mihomo-proxy.nora.svc.cluster.local`.
+Так как NORA в этой статье ставится в namespace `default`, а прокси — в `nora`, используется FQDN сервиса `mihomo-proxy.nora.svc.cluster.local`. mihomo сам маршрутизирует: `terraform.io`/`hashicorp.com` → VLESS, остальное → DIRECT.
 
-Дальше ничего делать не нужно — переменные подхватятся при установке NORA на шаге 5 (шаблон `helm-values.yaml.tpl` передаёт `extraEnv` в чарт). NORA (reqwest) подхватит env-прокси без изменений кода; в логе при старте появится `Outbound proxy detected from environment` (креды замаскируются).
+NORA (reqwest) подхватит env-прокси без изменений кода; в логе при старте появится `Outbound proxy detected from environment` (креды замаскируются).
 
 ### Проверка (после установки NORA на шаге 5)
 
 ```bash
-# Запрос из пода NORA через прокси
+# Запрос из пода NORA через прокси — terraform registry должен вернуть 200
 kubectl exec deploy/nora -- sh -c \
-  'wget -qO- --header="Proxy-Authorization: Basic $(echo -n nora:CHANGE_ME_LONG_PASSWORD|base64)" \
-   https://registry.terraform.io/.well-known/terraform.json \
-   --proxy=on -e http_proxy=http://mihomo-proxy.nora.svc.cluster.local:1080'
+  'wget -qO- --timeout=20 \
+   https://registry.terraform.io/.well-known/terraform.json'
 ```
 
 Или просто смотрим, что метрика `nora_upstream_policy_blocked_total {registry="terraform",reason="geo"}` перестала расти.
 
 ### Замечания по безопасности
 
-- Прокси доступен всему namespace/кластеру, поэтому на mixed-порту включена аутентификация — без пароля прокси закрыт даже внутри кластера.
-- NetworkPolicy ограничивает доступ только подами NORA — работает, если CNI поддерживает NetworkPolicy (Calico/Cilium); flannel его игнорирует. Обратите внимание: NetworkPolicy в `nora-vless-proxy.yaml` разрешает доступ только подам из namespace `nora` — так как NORA в этой статье ставится в `default`, политика её не пропустит; при необходимости добавьте `namespaceSelector` или полагайтесь на пароль.
+- Аутентификация на mixed-порту mihomo **не включена** — прокси маршрутизирует только terraform/hashicorp домены, остальное идёт напрямую, а доступ к Service ограничен NetworkPolicy.
+- NetworkPolicy ограничивает доступ только подами NORA — работает, если CNI поддерживает NetworkPolicy (Calico/Cilium); flannel его игнорирует. Обратите внимание: NetworkPolicy в `nora-vless-proxy.yaml` разрешает доступ только подам из namespace `nora` — так как NORA в этой статье ставится в `default`, политика её не пропустит; при необходимости добавьте `namespaceSelector`.
 - Если URL подписки сам заблокирован провайдером: скачайте подписку вручную, вставьте серверы в `proxies:` (формат clash) вместо `proxy-providers` и замените `use: [sub]` на имена/фильтр этих серверов в `proxy-groups`.
 
 ## Шаг 3. cert-manager: автоматические TLS-сертификаты

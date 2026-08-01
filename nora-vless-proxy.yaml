@@ -7,14 +7,10 @@
 #   NORA pod ──HTTPS_PROXY──► Service mihomo-proxy:1080 ──VLESS──► upstream
 #
 # Плюс: не нужен sidecar/kustomize/форк чарта NORA — всё голыми манифестами.
-# Минус: прокси доступен всему namespace/кластеру, поэтому:
-#   - на mixed-порту включена аутентификация (authentication),
-#   - NetworkPolicy ограничивает доступ только подами NORA (если CNI
-#     поддерживает NetworkPolicy — Calico/Cilium; flannel игнорирует).
+# NetworkPolicy ограничивает доступ только подами NORA (если CNI
+# поддерживает NetworkPolicy — Calico/Cilium; flannel игнорирует).
 #
-# Перед применением заменить:
-#   1) URL подписки в Secret (proxy-providers.sub.url)
-#   2) пароль CHANGE_ME_LONG_PASSWORD (здесь и в HTTPS_PROXY у NORA)
+# Перед применением заменить URL подписки в Secret (proxy-providers.sub.url)
 #
 # Применение:
 #   kubectl create namespace nora        # если ещё нет
@@ -35,12 +31,9 @@ stringData:
     mixed-port: 1080              # HTTP + SOCKS5 на одном порту
     bind-address: "*"             # слушаем не только localhost (см. NetworkPolicy)
     allow-lan: true
-    authentication:               # без пароля прокси закрыт даже внутри кластера
-      - "nora:CHANGE_ME_LONG_PASSWORD"
     log-level: warning
     ipv6: false
-    external-controller: 127.0.0.1:9090   # только localhost: probes + отладка
-
+    external-controller: 0.0.0.0:9090     # слушаем на всех интерфейсах для readiness probe
     proxy-providers:
       sub:
         type: http
@@ -58,6 +51,11 @@ stringData:
       - name: auto
         type: url-test            # авто-выбор живого/быстрого сервера
         use: [sub]
+        # Исключаем серверы в РФ — HashiCorp гео-блокирует registry.terraform.io
+        # для IP России. Фильтр (regex по имени) оставляет только зарубежные серверы:
+        # Нидерланды, Германия, Франция, Великобритания, Финляндия, Швеция и т.д.
+        filter: "(?i)(Нидерланды|Германия|Франция|Великобритания|Финляндия|Швеция|Польша|Литва|Румыния|Австрия|Швейцария|Норвегия|США|USA|Англия|Европа|EU)"
+        exclude-filter: "(?i)Россия|Russia|Москва|СПб|Москва"
         tolerance: 50
         url: https://www.gstatic.com/generate_204
 
@@ -68,7 +66,13 @@ stringData:
       - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
       - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
       - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
-      - MATCH,auto
+      # Terraform upstream гео-блокирован HashiCorp ("Content not available in
+      # your region") с IP Yandex Cloud — пускаем только его через VLESS-прокси.
+      # Остальные реестры (npmjs.org, pypi.org, github.com, storage.yandexcloud.net)
+      # доступны напрямую, поэтому идут через DIRECT — экономим VLESS-трафик.
+      - DOMAIN-SUFFIX,terraform.io,auto
+      - DOMAIN-SUFFIX,hashicorp.com,auto
+      - MATCH,DIRECT
 
 ---
 # -----------------------------------------------------------------------------
@@ -158,8 +162,6 @@ spec:
 ---
 # -----------------------------------------------------------------------------
 # NetworkPolicy: к прокси могут обращаться только поды NORA.
-# Бесполезен, если CNI не поддерживает NetworkPolicy — тогда защита только
-# паролем в authentication (см. Secret выше).
 # -----------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -188,9 +190,9 @@ spec:
 #
 # extraEnv:
 #   - name: HTTPS_PROXY
-#     value: "http://nora:CHANGE_ME_LONG_PASSWORD@mihomo-proxy:1080"
+#     value: "http://mihomo-proxy.nora.svc.cluster.local:1080"
 #   - name: https_proxy
-#     value: "http://nora:CHANGE_ME_LONG_PASSWORD@mihomo-proxy:1080"
+#     value: "http://mihomo-proxy.nora.svc.cluster.local:1080"
 #   - name: NO_PROXY
 #     value: "127.0.0.1,localhost,.svc,.cluster.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 #   - name: no_proxy
@@ -202,9 +204,8 @@ spec:
 # Проверка:
 #   kubectl -n nora logs deploy/mihomo-proxy                 # подписка скачалась
 #   kubectl -n nora exec deploy/nora -- sh -c \
-#     'wget -qO- --header="Proxy-Authorization: Basic $(echo -n nora:CHANGE_ME_LONG_PASSWORD|base64)" \
-#      https://registry.terraform.io/.well-known/terraform.json \
-#      --proxy=on -e http_proxy=http://mihomo-proxy:1080'
+#     'wget -qO- https://registry.terraform.io/.well-known/terraform.json \
+#      --proxy=on -e http_proxy=http://mihomo-proxy.nora.svc.cluster.local:1080'
 #   # или просто смотрим, что метрика nora_upstream_policy_blocked_total
 #   # {registry="terraform",reason="geo"} перестала расти
 #
