@@ -1378,6 +1378,222 @@ dependencies:
 dart pub get
 ```
 
+### Raw (произвольные файлы)
+
+NORA поддерживает хранение произвольных файлов — бинарников, архивов, конфигов, release-артефактов. Это hosted-only реестр: апстрим-проксирования нет, версионирования пакетов тоже нет — любой файл по любому пути.
+
+#### Загрузка файла
+
+```bash
+# Анонимная загрузка (если anonymous_read включён — для чтения; для записи нужен токен)
+curl -X PUT --data-binary @release.tar.gz \
+  https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
+
+# С аутентификацией (токен как пароль, любое имя пользователя)
+curl -u "token:nra_5d6640336f5a450cb17bc386404f1b47" \
+  -T release.tar.gz \
+  https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
+
+# Или через Bearer
+curl -H "Authorization: Bearer nra_5d6640336f5a450cb17bc386404f1b47" \
+  -X PUT --data-binary @release.tar.gz \
+  https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
+```
+
+#### Скачивание
+
+```bash
+curl -O https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
+```
+
+#### Условная перезапись (RFC 9110)
+
+Raw — единственный формат NORA с условными `PUT`: по умолчанию повторная загрузка в существующий путь возвращает **409 Conflict**. Чтобы перезаписать файл, используйте `If-Match` с ETag из HEAD, а для запрета перезаписи (create-only) — `If-None-Match: *`:
+
+```bash
+# Получаем ETag существующего файла
+curl -I https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
+# etag: "abc123..."
+
+# Перезапись только если ETag совпадает
+curl -X PUT -H 'If-Match: "abc123..."' \
+  --data-binary @release-1.1.tar.gz \
+  https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
+
+# Create-only: упадёт 412, если файл уже есть
+curl -X PUT -H 'If-None-Match: *' \
+  --data-binary @release.tar.gz \
+  https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
+```
+
+#### Удаление и проверка существования
+
+```bash
+# Удаление
+curl -X DELETE https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
+
+# HEAD — возвращает размер и Content-Type
+curl -I https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
+```
+
+#### Замечания
+
+- Лимит размера файла — `raw.max_file_size` (по умолчанию 100 МБ), проверяется инкрементально в момент стриминга (ограничение `server.body_limit_mb` на Raw **не действует**).
+- Path traversal отсекается (`/raw/../etc/passwd` → 400/404).
+- Directory listing не поддерживается.
+
+### RPM (yum/dnf)
+
+NORA поддерживает hosted RPM-репозитории с автоматической генерацией `repodata/` (как `createrepo`, но на стороне сервера) и pull-through проксирование апстрим yum-репозиториев.
+
+#### Загрузка RPM-пакета
+
+```bash
+# Публикуем .rpm в репозиторий myrepo (имя репо — любой путь /rpm/<name>/)
+curl -u "token:nra_5d6640336f5a450cb17bc386404f1b47" \
+  -T myapp-1.0-1.x86_64.rpm \
+  https://$NORA_FQDN/rpm/myrepo/myapp-1.0-1.x86_64.rpm
+```
+
+При публикации NORA парсит и валидирует RPM-заголовок; невалидные пакеты отвергаются. После publish/delete `repodata/` (`repomd.xml`, `primary/filelists/other.xml.gz`) регенерируется автоматически.
+
+#### Настройка клиента yum/dnf
+
+```bash
+sudo tee /etc/yum.repos.d/nora-myrepo.repo <<EOF
+[nora-myrepo]
+name=NORA myrepo
+baseurl=https://$NORA_FQDN/rpm/myrepo
+enabled=1
+gpgcheck=0
+repo_gpgcheck=0
+EOF
+```
+
+> `gpgcheck=0` — NORA не подписывает сами пакеты, только метаданные. На S3-бэкенде без `signing.key_path` подпись метаданных отключена, поэтому `repo_gpgcheck=0`. Если вы включите `signing.enabled` + `signing.key_path`, поставьте `repo_gpgcheck=1` и `gpgkey=https://$NORA_FQDN/rpm/myrepo/repodata/repomd.xml.key`.
+
+#### Установка пакетов
+
+```bash
+sudo dnf clean all
+sudo dnf install myapp
+```
+
+#### Pull-through проксирование апстрим-репозитория
+
+В `helm-values.yaml` можно настроить маппинг имени репо на апстрим (проксированный репо — read-only, запись вернёт 409):
+
+```yaml
+config:
+  registries:
+    rpm:
+      proxies:
+        fedora: "https://download.fedoraproject.org/pub/fedora/linux/releases/40/Everything/x86_64/os"
+```
+
+```bash
+sudo dnf install --enablerepo=nora-fedora vim
+```
+
+#### Reindex (лечение out-of-band изменений)
+
+```bash
+curl -X POST https://$NORA_FQDN/rpm/myrepo/-/reindex
+```
+
+#### Зеркалирование для air-gapped
+
+```bash
+nora mirror rpm --repo myrepo --arch x86_64,noarch \
+  --registry https://$NORA_FQDN
+```
+
+#### Замечания
+
+- RPM отключён по умолчанию, но включается через `registries.enable: "all"` (уже стоит в `helm-values.yaml.tpl`).
+- SQLite-метаданные (`*_db`), delta-RPM и module metadata (`modules.yaml`) не генерируются — только XML.
+- Каждый `/rpm/{repo}/` — независимый репозиторий.
+
+### Debian/APT
+
+NORA поддерживает hosted APT-репозитории с серверной генерацией `Packages`/`Release`/`InRelease` (без `dpkg-scanpackages`) и pull-through проксирование `deb.debian.org` и других зеркал. Поддерживаются два layout: **flat** (индексы в корне репо) и **structured** (dists/suites с компонентами).
+
+#### Загрузка .deb
+
+```bash
+# Flat — индексы в корне репо
+curl -u "token:nra_5d6640336f5a450cb17bc386404f1b47" \
+  -T myapp_1.0_amd64.deb \
+  https://$NORA_FQDN/deb/myrepo/myapp_1.0_amd64.deb
+
+# Structured —指定 distribution и component через query-параметры
+curl -u "token:nra_5d6640336f5a450cb17bc386404f1b47" \
+  -T myapp_1.0_amd64.deb \
+  "https://$NORA_FQDN/deb/myrepo/pool/main/m/myapp/myapp_1.0_amd64.deb?distribution=jammy&component=main"
+```
+
+NORA парсит control-параграф из `.deb` (без `dpkg-scanpackages`), валидирует и регенерирует все затронутые индексы (`Packages`, `Packages.gz`, `Release`, `InRelease`, `Release.gpg`).
+
+#### Настройка клиента apt
+
+```bash
+# Ключ репозитория (на S3 без signing.key_path — используйте [trusted=yes] вместо signed-by)
+curl -fsSL https://$NORA_FQDN/deb/myrepo/pubkey.gpg \
+  -o /etc/apt/keyrings/nora.asc
+
+# Flat
+echo "deb [signed-by=/etc/apt/keyrings/nora.asc] https://$NORA_FQDN/deb/myrepo ./" \
+  > /etc/apt/sources.list.d/nora.list
+
+# Structured
+echo "deb [signed-by=/etc/apt/keyrings/nora.asc] https://$NORA_FQDN/deb/myrepo jammy main" \
+  > /etc/apt/sources.list.d/nora.list
+```
+
+> Если подпись индексов отключена (на S3-бэкенде без `signing.key_path`), замените `[signed-by=...]` на `[trusted=yes]`:
+> ```bash
+> echo "deb [trusted=yes] https://$NORA_FQDN/deb/myrepo ./" > /etc/apt/sources.list.d/nora.list
+> ```
+
+#### Установка пакетов
+
+```bash
+sudo apt update
+sudo apt install myapp
+```
+
+#### Pull-through проксирование апстрим
+
+```yaml
+config:
+  registries:
+    deb:
+      proxies:
+        debian: "https://deb.debian.org/debian"
+```
+
+```bash
+sudo apt install --no-install-recommends vim
+```
+
+#### Reindex и air-gapped mirror
+
+```bash
+# Лечение out-of-band изменений
+curl -X POST https://$NORA_FQDN/deb/myrepo/-/reindex
+
+# Зеркалирование для air-gapped
+nora mirror deb --repo myrepo --dist jammy --component main --arch amd64 \
+  --registry https://$NORA_FQDN
+```
+
+#### Замечания
+
+- Debian отключён по умолчанию, включается через `registries.enable: "all"` (уже в `helm-values.yaml.tpl`).
+- `by-hash` индексы и `Translations`/`Contents` не генерируются — только `Packages{,.gz}` + `Release` + `InRelease`/`Release.gpg`.
+- В structured layout arch-`all` пакеты автоматически попадают во все индексы конкретных архитектур.
+- Upload path free-form: `Filename` в индексе считается от корня репо; структура `pool/...` не обязательна.
+
 ## Защита от supply chain атак
 
 NORA включает многоуровневую защиту от атак на цепочку поставок — ситуаций, когда скомпрометированный пакет из публичного реестра попадает в production через ваш приватный registry. Яркий пример — 31 марта 2026 года группа DPRK Sapphire Sleet перехватила контроль над npm-пакетом axios (100 млн загрузок в неделю), опубликовав вредоносную версию 1.14.1. Окно атаки составило всего 3 часа, но могло затронуть миллионы проектов.
