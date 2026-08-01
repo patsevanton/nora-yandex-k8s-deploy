@@ -76,7 +76,77 @@ echo $NORA_FQDN
 
 Далее в примерах используется `$NORA_FQDN`. Домен формируется автоматически через [sslip.io](https://sslip.io) — бесплатный wildcard-DNS, который не требует регистрации и токенов: домен резолвится в IP ingress-контроллера без какой-либо настройки, а Let's Encrypt выдаёт для него валидный TLS-сертификат через HTTP-01 challenge.
 
-## Шаг 2. cert-manager: автоматические TLS-сертификаты
+## Шаг 2. VLESS-прокси для исходящего трафика NORA
+
+Если upstream-реестры (registry.terraform.io, npmjs.org и т.д.) недоступны с IP вашего кластера (geo-блокировки, санкционные ограничения), исходящий трафик NORA можно пустить через VLESS-прокси. Этот шаг нужно выполнить **сразу после `terraform apply`**, чтобы NORA с первого старта ходила наружу через прокси. Если ваши upstream-реестры доступны напрямую — пропустите этот шаг.
+
+Готовый файл [nora-vless-proxy.yaml](nora-vless-proxy.yaml) поднимает [mihomo](https://github.com/MetaCubeX/mihomo) (ядро Clash.Meta, ест VLESS-подписку напрямую) как отдельный Deployment + Service в кластере:
+
+```
+NORA pod ──HTTPS_PROXY──► Service mihomo-proxy:1080 ──VLESS──► upstream
+```
+
+Плюс: не нужен sidecar/kustomize/форк чарта NORA — всё голыми манифестами.
+
+### Шаг 2.1. Заполнить Secret
+
+Отредактируйте в `nora-vless-proxy.yaml` (секция `kind: Secret`):
+
+1. URL подписки в `proxy-providers.sub.url` — ваша VLESS-подписка.
+2. Пароль `CHANGE_ME_LONG_PASSWORD` — замените на длинный случайный (понадобится далее в `HTTPS_PROXY`).
+
+### Шаг 2.2. Применить манифест
+
+```bash
+kubectl create namespace nora        # если ещё нет
+kubectl apply -f nora-vless-proxy.yaml
+```
+
+Проверяем, что подписка скачалась:
+
+```bash
+kubectl -n nora logs deploy/mihomo-proxy
+```
+
+### Шаг 2.3. Добавить env-прокси в helm-values.yaml
+
+Допишите в `helm-values.yaml` (сгенерирован Terraform на шаге 1) переменные прокси в **уже существующий** список `extraEnv` — после переменных S3, чтобы не дублировать ключ `extraEnv`:
+
+```yaml
+extraEnv:
+  - name: HTTPS_PROXY
+    value: "http://nora:CHANGE_ME_LONG_PASSWORD@mihomo-proxy.nora.svc.cluster.local:1080"
+  - name: https_proxy
+    value: "http://nora:CHANGE_ME_LONG_PASSWORD@mihomo-proxy.nora.svc.cluster.local:1080"
+  - name: NO_PROXY
+    value: "127.0.0.1,localhost,.svc,.cluster.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+  - name: no_proxy
+    value: "127.0.0.1,localhost,.svc,.cluster.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+```
+
+Так как NORA в этой статье ставится в namespace `default`, а прокси — в `nora`, используется FQDN сервиса `mihomo-proxy.nora.svc.cluster.local`.
+
+Дальше ничего делать не нужно — переменные подхватятся при установке NORA на шаге 5 (шаблон `helm-values.yaml.tpl` передаёт `extraEnv` в чарт). NORA (reqwest) подхватит env-прокси без изменений кода; в логе при старте появится `Outbound proxy detected from environment` (креды замаскируются).
+
+### Проверка (после установки NORA на шаге 5)
+
+```bash
+# Запрос из пода NORA через прокси
+kubectl exec deploy/nora -- sh -c \
+  'wget -qO- --header="Proxy-Authorization: Basic $(echo -n nora:CHANGE_ME_LONG_PASSWORD|base64)" \
+   https://registry.terraform.io/.well-known/terraform.json \
+   --proxy=on -e http_proxy=http://mihomo-proxy.nora.svc.cluster.local:1080'
+```
+
+Или просто смотрим, что метрика `nora_upstream_policy_blocked_total {registry="terraform",reason="geo"}` перестала расти.
+
+### Замечания по безопасности
+
+- Прокси доступен всему namespace/кластеру, поэтому на mixed-порту включена аутентификация — без пароля прокси закрыт даже внутри кластера.
+- NetworkPolicy ограничивает доступ только подами NORA — работает, если CNI поддерживает NetworkPolicy (Calico/Cilium); flannel его игнорирует. Обратите внимание: NetworkPolicy в `nora-vless-proxy.yaml` разрешает доступ только подам из namespace `nora` — так как NORA в этой статье ставится в `default`, политика её не пропустит; при необходимости добавьте `namespaceSelector` или полагайтесь на пароль.
+- Если URL подписки сам заблокирован провайдером: скачайте подписку вручную, вставьте серверы в `proxies:` (формат clash) вместо `proxy-providers` и замените `use: [sub]` на имена/фильтр этих серверов в `proxy-groups`.
+
+## Шаг 3. cert-manager: автоматические TLS-сертификаты
 
 Для работы HTTPS с валидным TLS-сертификатом от Let's Encrypt нужен [cert-manager](https://cert-manager.io/). Он автоматически выпускает и обновляет сертификаты для Ingress-ресурсов.
 
@@ -134,7 +204,7 @@ kubectl get clusterissuer letsencrypt-prod
 # letsencrypt-prod   True    10s
 ```
 
-## Шаг 3. Аутентификация
+## Шаг 4. Аутентификация
 
 По умолчанию NORA работает без аутентификации (анонимный доступ на чтение). Для включения авторизации выполните следующие шаги:
 
@@ -186,7 +256,7 @@ kubectl get secret nora-s3-credentials -o jsonpath='{.data.S3_ACCESS_KEY}' | bas
 kubectl get secret nora-s3-credentials -o jsonpath='{.data.S3_SECRET_KEY}' | base64 -d && echo
 ```
 
-## Шаг 4. Деплой NORA через Helm
+## Шаг 5. Деплой NORA через Helm
 
 Инфраструктура готова — кластер работает, ingress-nginx слушает на публичном IP, cert-manager выпустит TLS-сертификат автоматически. Теперь ставим NORA.
 
@@ -279,7 +349,7 @@ resources:
 - `config.storage.bucket` — имя S3-бакета
 - `config.storage.s3_region` — регион Yandex Cloud
 - `persistence.enabled: false` — PVC не нужен, данные хранятся в S3
-- `extraEnv` — credentials для S3 берутся из Kubernetes Secret `nora-s3-credentials` (создан на шаге 3)
+- `extraEnv` — credentials для S3 берутся из Kubernetes Secret `nora-s3-credentials` (создан на шаге 4)
 - `config.auth.enabled` — включает аутентификацию по htpasswd
 - `config.auth.htpasswd.existingSecret` — ссылка на Kubernetes Secret с htpasswd-файлом (chart сам монтирует его в контейнер)
 - `proxy-body-size: "0"` — снимает ограничение на размер тела запроса (нужно для больших Docker-образов)
