@@ -159,10 +159,17 @@ NORA (reqwest) подхватит env-прокси без изменений к�
 ### Проверка (после установки NORA на шаге 5)
 
 ```bash
-# Запрос из пода NORA через прокси — terraform registry должен вернуть 200
-kubectl exec deploy/nora -- sh -c \
-  'wget -qO- --timeout=20 \
-   https://registry.terraform.io/.well-known/terraform.json'
+# Запрос к Terraform registry через NORA (reqwest внутри NORA использует HTTPS_PROXY) — должен вернуть 200
+curl -sS -o /dev/null -w "HTTP %{http_code}\n" \
+  https://$NORA_FQDN/terraform/v1/providers/hashicorp/aws/versions
+
+# Проверка прокси напрямую из пода NORA: BusyBox wget НЕ читает env-прокси,
+# поэтому используем curl из debug-пода (curlimages/curl) с явным -x:
+kubectl -n nora run curl-debug --rm -i --restart=Never \
+  --image=curlimages/curl:8.10.0 --restart=Never -- \
+  curl -sS -x http://mihomo-proxy:1080 -o /dev/null -w "HTTP %{http_code}\n" \
+  https://registry.terraform.io/.well-known/terraform.json
+# HTTP 200 — прокси пробрасывает terraform.io через VLESS
 ```
 
 Или просто смотрим, что метрика `nora_upstream_policy_blocked_total {registry="terraform",reason="geo"}` перестала расти.
@@ -422,21 +429,90 @@ curl -X POST https://$NORA_FQDN/api/tokens \
     "ttl_days": 90,
     "description": "CI/CD pipeline token"
   }'
-# {"token": "nra_5d6640336f5a450cb17bc386404f1b47...", "expires_in_days": 90}
+# {"token": "nra_5dc95b98dab14ad1b65e7050be550e25...", "expires_in_days": 90}
 
 # проверка токена
-curl -H "Authorization: Bearer nra_5d6640336f5a450cb17bc386404f1b47" \
+curl -H "Authorization: Bearer nra_5dc95b98dab14ad1b65e7050be550e25" \
   https://$NORA_FQDN/v2/_catalog
 
 ```
 
 ## Использование: примеры для каждого формата
 
+NORA v1.1.0 поддерживает 15 форматов, но не для всех реализована публикация (push/publish). Часть реестров работает только как **proxy/cache** (зеркало апстрима с кэшированием) — публиковать в них собственные пакеты нельзя. Сводная таблица:
+
+| Формат | Pull (proxy/cache) | Push/Publish | Примечание |
+|---|:---:|:---:|---|
+| Docker / OCI | ✅ | ✅ | hosted + proxy |
+| Helm OCI | ✅ | ✅ | через Docker/OCI endpoint |
+| npm | ✅ | ✅ | hosted + proxy |
+| PyPI | ✅ | ✅ | hosted + proxy |
+| Maven | ✅ | ✅ | hosted + proxy |
+| Cargo | ✅ | ✅ | hosted + proxy (sparse index) |
+| Go | ✅ | — | proxy только (модули immutable, push не предусмотрен протоколом) |
+| Terraform | ✅ | — | proxy только (провайдеры скачиваются из апстрима) |
+| Raw | ✅ | ✅ | hosted only, условные PUT (ETag/If-Match — только на local-бэкенде, см. раздел Raw) |
+| RPM | ✅ | ✅ | hosted + proxy, авто-генерация repodata |
+| Debian/APT | ✅ | ✅ | hosted + proxy, авто-генерация Packages/Release |
+| RubyGems | ✅ | ❌ | **только proxy/cache** — `gem push` не реализован в NORA v1.1.0 |
+| NuGet | ✅ | ❌ | **только proxy/cache** — `dotnet nuget push` не реализован |
+| Ansible Galaxy | ✅ | ❌ | **только proxy/cache** — `ansible-galaxy collection publish` не реализован |
+| Pub (Dart) | ✅ | ❌ | **только proxy/cache** — `dart pub publish` не реализован |
+| Conan | ⚠️ | ❌ | v2 API работает через curl (proxy/cache); клиент Conan 2.x НЕ работает — v1 ping-барьер (см. раздел Conan) |
+
+Для форматов, помеченных ❌ в колонке Push, разделы ниже содержат примеры команд публикации — они оставлены для справки и будут актуальны, когда NORA добавит соответствующие эндпоинты. Сейчас эти форматы используйте только как pull-through кэш.
+
+### Кэширование 15 форматов
+
+Не все 15 форматов кэшируют апстрим. NORA разделяет реестры на **proxy/cache** (кешируют пакеты/метаданные из апстрима) и **hosted-only** (только локальные пакеты, апстрима нет). Сводка по умолчанию (без явной настройки `proxies` в `helm-values.yaml`):
+
+| Формат | Кэширует апстрим | Апстрим по умолчанию | Тип кэша | Примечание |
+|---|:---:|---|---|---|
+| Docker / OCI | ✅ | `registry-1.docker.io` | immutable blobs + TTL manifest | hosted + proxy; кэш включён, когда `docker.upstreams` непустой (по умолчанию Docker Hub) |
+| Helm OCI | ✅ | через Docker/OCI endpoint | — | hosted + proxy (через Docker endpoint) |
+| npm | ✅ | `registry.npmjs.org` | packuments (TTL) + tarball (immutable) | hosted + proxy |
+| PyPI | ✅ | `pypi.org/simple/` | index (TTL) + файлы (immutable) | hosted + proxy |
+| Maven | ✅ | `repo1.maven.org/maven2` | metadata (TTL) + артефакты (immutable) | hosted + proxy |
+| Cargo | ✅ | `crates.io` (sparse index) | index (TTL) + .crate (immutable) | hosted + proxy |
+| Go | ✅ | `proxy.golang.org` | @v/list,@latest (TTL) + .info/.mod/.zip (immutable) | proxy только |
+| Terraform | ✅ | `registry.terraform.io` | discovery (TTL) + провайдеры (immutable) | proxy только; требует `anonymous_read: true` |
+| RubyGems | ✅ | `rubygems.org` | specs/latest_specs/info (TTL) + gem/gemspec (immutable) | proxy только |
+| NuGet | ✅ | `api.nuget.org` | registration/query (TTL) + .nupkg/.nuspec (immutable) | proxy только |
+| Ansible Galaxy | ✅ | `galaxy.ansible.com` | collection list/detail (TTL) + tarball (immutable) | proxy только |
+| Pub (Dart) | ✅ | `pub.dev` | package metadata (TTL) + archive (immutable) | proxy только |
+| Conan | ✅* | `center2.conan.io` | revisions (TTL) + recipe/package files (immutable) | proxy только; v2 API работает через curl, клиент Conan 2.x не работает (v1 ping-барьер) |
+| RPM | ⚠️ | — (нет по умолчанию) | пакеты (immutable) + repodata (регенерируется) | hosted; pull-through проксирование доступно через `config.registries.rpm.proxies` (например, `fedora: https://download.fedoraproject.org/...`), по умолчанию **выключено** |
+| Debian/APT | ⚠️ | — (нет по умолчанию) | пакеты (immutable) + Packages/Release (регенерируется) | hosted; pull-through через `config.registries.deb.proxies` (например, `debian: https://deb.debian.org/debian`), по умолчанию **выключено** |
+| Raw | ❌ | — (нет апстрима) | — | **hosted only** — апстрим-проксирования нет по дизайну (любой файл по любому пути); кэшировать нечего |
+
+**Итого: 13 из 15 форматов кэшируют апстрим из коробки** (Docker, Helm OCI, npm, PyPI, Maven, Cargo, Go, Terraform, RubyGems, NuGet, Ansible, Pub, Conan). RPM и Debian/APT поддерживают pull-through проксирование, но по умолчанию работают как hosted-only — нужно явно прописать `config.registries.rpm.proxies` / `config.registries.deb.proxies` в `helm-values.yaml`. Raw не кэширует ничего — это hosted-only реестр для произвольных файлов.
+
+Типы кэша:
+- **immutable** — пакет/артефакт кэшируется навсегда после первого скачивания (content-addressed, не меняется). Это основная защита от rate-limit и блокировок апстрима.
+- **TTL** — метаданные (index, search, version list) кэшируются с TTL (по умолчанию 300с для большинства, настраивается через `<registry>.metadata_ttl`); при истечении TTL NORA ревалидирует у апстрима (`If-None-Match`/`If-Modified-Since`), при недоступности апстрима — отдаёт stale.
+
+### Включение pull-through для RPM/Debian
+
+По умолчанию RPM и Debian/APT в NORA — hosted-репозитории (вы публикуете свои пакеты). Чтобы они ещё и проксировали апстрим, добавьте маппинг в `helm-values.yaml`:
+
+```yaml
+config:
+  registries:
+    rpm:
+      proxies:
+        fedora: "https://download.fedoraproject.org/pub/fedora/linux/releases/40/Everything/x86_64/os"
+    deb:
+      proxies:
+        debian: "https://deb.debian.org/debian"
+```
+
+После этого `dnf install --enablerepo=nora-fedora vim` / `apt install vim` пойдёт через NORA (pull-through, immutable кэш). Проксированный репозиторий — read-only (запись вернёт 409).
+
 ### Docker
 
 ```bash
 # Docker login с токеном (токен в качестве пароля, любое имя пользователя)
-docker login $NORA_FQDN -u token -p nra_5d6640336f5a450cb17bc386404f1b47
+docker login $NORA_FQDN -u token -p nra_5dc95b98dab14ad1b65e7050be550e25
 
 # Берём готовый публичный образ (или собираем свой из Dockerfile)
 docker pull nginx:alpine
@@ -455,7 +531,7 @@ NORA полностью совместима с Docker Registry v2 API, поэт
 
 ```bash
 # Использовать токен для npm
-npm config set //$NORA_FQDN:_authToken nra_5d6640336f5a450cb17bc386404f1b47
+npm config set //$NORA_FQDN:_authToken nra_5dc95b98dab14ad1b65e7050be550e25
 
 # Настройка реестра для проекта
 npm config set registry https://$NORA_FQDN/npm/
@@ -489,7 +565,7 @@ EOF
 
 cd test-npm-pkg
 
-npm config set //$NORA_FQDN/npm/:_authToken nra_5d6640336f5a450cb17bc386404f1b47
+npm config set //$NORA_FQDN/npm/:_authToken nra_5dc95b98dab14ad1b65e7050be550e25
 
 # Публикуем (запускается из директории test-npm-pkg)
 npm publish --registry https://$NORA_FQDN/npm/
@@ -532,7 +608,7 @@ source .venv/bin/activate
 python3 -m ensurepip --upgrade
 
 # Установка пакета через NORA (с токеном)
-python3 -m pip install --index-url https://token:nra_5d6640336f5a450cb17bc386404f1b47@$NORA_FQDN/simple/ flask
+python3 -m pip install --index-url https://token:nra_5dc95b98dab14ad1b65e7050be550e25@$NORA_FQDN/simple/ flask
 ```
 
 Пример минимального Python-пакета для публикации:
@@ -552,7 +628,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install build twine
 python -m build
-twine upload --repository-url https://token:nra_5d6640336f5a450cb17bc386404f1b47@$NORA_FQDN/simple/ dist/*
+twine upload --repository-url https://token:nra_5dc95b98dab14ad1b65e7050be550e25@$NORA_FQDN/simple/ dist/*
 ```
 
 Для постоянной настройки создайте `~/.pip/pip.conf`:
@@ -697,16 +773,16 @@ go mod init test-go-pkg
 
 ```bash
 # Глобально через go env (рекомендуется)
-go env -w GOPROXY=https://token:nra_5d6640336f5a450cb17bc386404f1b47@$NORA_FQDN/go,direct
+go env -w GOPROXY=https://token:nra_5dc95b98dab14ad1b65e7050be550e25@$NORA_FQDN/go,direct
 
 # Или через переменную окружения
-export GOPROXY=https://token:nra_5d6640336f5a450cb17bc386404f1b47@$NORA_FQDN/go,direct
+export GOPROXY=https://token:nra_5dc95b98dab14ad1b65e7050be550e25@$NORA_FQDN/go,direct
 ```
 
 **Вариант 2: Через .netrc (рекомендуется для CI/CD)**
 
 ```bash
-echo "machine $NORA_FQDN login token password nra_5d6640336f5a450cb17bc386404f1b47" >> ~/.netrc
+echo "machine $NORA_FQDN login token password nra_5dc95b98dab14ad1b65e7050be550e25" >> ~/.netrc
 chmod 600 ~/.netrc
 
 go env -w GOPROXY=https://$NORA_FQDN/go,direct
@@ -742,7 +818,7 @@ mkdir -p test-cargo-pkg/.cargo test-cargo-pkg/src
 ```bash
 cat <<EOF >  test-cargo-pkg/.cargo/config.toml
 [registries.nora]
-index = "sparse+https://$NORA_FQDN/cargo/"
+index = "sparse+https://$NORA_FQDN/cargo/index/"
 
 [registry]
 global-credential-providers = ["cargo:token"]
@@ -756,10 +832,10 @@ EOF
 
 ```bash
 # Вариант 1: через stdin (рекомендуется для CI/CD)
-echo "Bearer nra_5d6640336f5a450cb17bc386404f1b47" | cargo login --registry nora
+echo "Bearer nra_5dc95b98dab14ad1b65e7050be550e25" | cargo login --registry nora
 
 # Вариант 2: через переменную окружения
-export CARGO_REGISTRIES_NORA_TOKEN="Bearer nra_5d6640336f5a450cb17bc386404f1b47"
+export CARGO_REGISTRIES_NORA_TOKEN="Bearer nra_5dc95b98dab14ad1b65e7050be550e25"
 ```
 
 > **Важно:** префикс `Bearer ` обязателен — без него Cargo выдаст ошибку `the token does not include an authentication scheme`.
@@ -821,7 +897,9 @@ terraform init
 
 ### RubyGems
 
-NORA поддерживает proxy/cache для RubyGems — проксирует запросы к rubygems.org и кэширует гемы.
+NORA поддерживает proxy/cache для RubyGems — проксирует запросы к rubygems.org и кэширует гемы. Публикация гемов (`gem push`) в NORA v1.1.0 **не поддерживается** (отсутствует эндпоинт `/api/v1/gems` для POST); реестр работает только как зеркало rubygems.org.
+
+> Pull-through протестирован: `bundle install` успешно скачал `rake 13.4.2` через `https://$NORA_FQDN/gems/`. Подтверждено исходниками NORA (`nora-registry/src/registry/gems.rs`, `pub fn routes`): все роуты — только `get` (`specs_index`, `latest_specs_index`, `info`, `download_gem`, `download_gemspec`); POST/PUT-эндпоинтов для публикации нет.
 
 #### Настройка зеркалирования
 
@@ -847,11 +925,13 @@ bundle install
 
 #### Публикация гема
 
+> **Важно:** публикация гемов (`gem push`) в NORA v1.1.0 не реализована — эндпоинт `POST /api/v1/gems` отсутствует, `gem push` возвращает 404. Раздел ниже оставлен для справки и будет актуален, когда NORA добавит эндпоинт публикации. Сейчас используйте RubyGems только как proxy/cache (см. выше).
+
 Для публикации гема в NORA используйте `gem push` с указанием реестра:
 
 ```bash
 # Авторизация (токен используется как пароль, любое имя пользователя)
-curl -u "token:nra_5d6640336f5a450cb17bc386404f1b47" \
+curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" \
   https://$NORA_FQDN/api/v1/gems
 
 # Собираем гем из .gemspec
@@ -860,7 +940,7 @@ gem build mygem.gemspec
 # Публикуем
 gem push mygem-0.1.0.gem \
   --host https://$NORA_FQDN/gems/ \
-  --key nra_5d6640336f5a450cb17bc386404f1b47
+  --key nra_5dc95b98dab14ad1b65e7050be550e25
 ```
 
 Пример минимального тестового гема:
@@ -923,7 +1003,9 @@ gem install test-ruby-pkg --source https://$NORA_FQDN/gems/
 
 ### NuGet (.NET)
 
-NORA поддерживает NuGet V3 API — проксирует запросы к nuget.org и кэширует пакеты.
+NORA поддерживает NuGet V3 API — проксирует запросы к nuget.org и кэширует пакеты. Публикация NuGet-пакетов (`dotnet nuget push`) в NORA v1.1.0 **не поддерживается** (в индексе `/nuget/v3/index.json` отсутствует ресурс `PackagePublish/2.0.0`, PUT-эндпоинты для `/nuget/*` не реализованы); реестр работает только как зеркало nuget.org.
+
+> Pull-through протестирован: `dotnet restore --source nora` успешно скачал `Newtonsoft.Json 13.0.3` через NORA. Подтверждено исходниками NORA (`nora-registry/src/registry/nuget.rs`, `fn routes_with_prefix`): все роуты — только `get` (`service_index`, `search_query`, `autocomplete`, `registration_index`, `flatcontainer`); ресурс `PackagePublish/2.0.0` в service index отсутствует, PUT/POST-эндпоинтов нет.
 
 #### Настройка источника пакетов
 
@@ -932,14 +1014,14 @@ NORA поддерживает NuGet V3 API — проксирует запрос
 dotnet nuget add source https://$NORA_FQDN/nuget/v3/index.json \
   -n nora \
   -u token \
-  -p nra_5d6640336f5a450cb17bc386404f1b47 \
+  -p nra_5dc95b98dab14ad1b65e7050be550e25 \
   --store-password-in-clear-text
 
 # Или через nuget CLI
 nuget source add -Name nora \
   -Source https://$NORA_FQDN/nuget/v3/index.json \
   -UserName token \
-  -Password nra_5d6640336f5a450cb17bc386404f1b47
+  -Password nra_5dc95b98dab14ad1b65e7050be550e25
 ```
 
 Или через файл `nuget.config` в проекте:
@@ -953,7 +1035,7 @@ nuget source add -Name nora \
   <packageSourceCredentials>
     <nora>
       <add key="Username" value="token" />
-      <add key="ClearTextPassword" value="nra_5d6640336f5a450cb17bc386404f1b47" />
+      <add key="ClearTextPassword" value="nra_5dc95b98dab14ad1b65e7050be550e25" />
     </nora>
   </packageSourceCredentials>
 </configuration>
@@ -966,6 +1048,8 @@ dotnet restore
 ```
 
 #### Публикация пакета
+
+> **Важно:** публикация NuGet-пакетов (`dotnet nuget push`) в NORA v1.1.0 не реализована (см. замечание в начале раздела). Раздел ниже оставлен для справки и будет актуален, когда NORA добавит эндпоинт публикации.
 
 Пример минимального тестового NuGet-пакета:
 
@@ -1008,7 +1092,7 @@ dotnet pack -c Release
 # Публикуем в NORA
 dotnet nuget push bin/Release/TestNugetPkg.0.1.0.nupkg \
   --source https://$NORA_FQDN/nuget/v3/index.json \
-  --api-key nra_5d6640336f5a450cb17bc386404f1b47
+  --api-key nra_5dc95b98dab14ad1b65e7050be550e25
 ```
 
 #### Установка из NORA
@@ -1019,7 +1103,9 @@ dotnet add package TestNugetPkg --source https://$NORA_FQDN/nuget/v3/index.json
 
 ### Ansible Galaxy
 
-NORA поддерживает Ansible Galaxy API — проксирует запросы к galaxy.ansible.com и кэширует коллекции и роли.
+NORA поддерживает Ansible Galaxy API — проксирует запросы к galaxy.ansible.com и кэширует коллекции и роли. Публикация коллекций (`ansible-galaxy collection publish`) в NORA v1.1.0 **не поддерживается** (отсутствует POST-эндпоинт `/api/v3/artifacts/imports/`); реестр работает только как зеркало galaxy.ansible.com.
+
+> Pull-through протестирован: `ansible-galaxy collection install community.general` через NORA успешно скачал `community.general:13.2.0`. Подтверждено исходниками NORA (`nora-registry/src/registry/ansible.rs`, `pub fn routes`): все роуты — только `get` (`api_discovery`, `collection_list`, `collection_detail`, `version_list`, `version_detail`, `download_tarball`); POST-эндпоинта `/api/v3/artifacts/imports/` нет.
 
 #### Установка коллекций
 
@@ -1027,7 +1113,7 @@ NORA поддерживает Ansible Galaxy API — проксирует зап
 # Установка коллекции из NORA (с аутентификацией)
 ansible-galaxy collection install community.general \
   -s https://$NORA_FQDN/ansible/ \
-  --token nra_5d6640336f5a450cb17bc386404f1b47
+  --token nra_5dc95b98dab14ad1b65e7050be550e25
 ```
 
 Для постоянной настройки добавьте сервер в `ansible.cfg`:
@@ -1038,7 +1124,7 @@ server_list = nora
 
 [galaxy_server.nora]
 url = https://$NORA_FQDN/ansible/
-token = nra_5d6640336f5a450cb17bc386404f1b47
+token = nra_5dc95b98dab14ad1b65e7050be550e25
 ```
 
 После этого все команды `ansible-galaxy` будут использовать NORA:
@@ -1049,6 +1135,8 @@ ansible-galaxy role install geerlingguy.docker
 ```
 
 #### Публикация коллекции
+
+> **Важно:** публикация коллекций (`ansible-galaxy collection publish`) в NORA v1.1.0 не реализована (см. замечание в начале раздела). Раздел ниже оставлен для справки и будет актуален, когда NORA добавит эндпоинт публикации.
 
 Пример минимальной тестовой коллекции:
 
@@ -1106,7 +1194,7 @@ ansible-galaxy collection build
 # Публикуем в NORA
 ansible-galaxy collection publish test-hello_nora-0.1.0.tar.gz \
   --server https://$NORA_FQDN/ansible/ \
-  --token nra_5d6640336f5a450cb17bc386404f1b47
+  --token nra_5dc95b98dab14ad1b65e7050be550e25
 ```
 
 #### Публикация роли
@@ -1119,58 +1207,84 @@ cd test-hello-nora
 # Публикуем роль в NORA
 ansible-galaxy role import \
   --server https://$NORA_FQDN/ansible/ \
-  --token nra_5d6640336f5a450cb17bc386404f1b47
+  --token nra_5dc95b98dab14ad1b65e7050be550e25
 ```
 
 ### Conan (C/C++)
 
-NORA поддерживает Conan V2 API — проксирует запросы к conan.io (ConanCenter) и кэширует пакеты.
+NORA реализует Conan V2 API (`/conan/v2/*`) — проксирует запросы к ConanCenter (`center2.conan.io`) и кэширует пакеты. Публикация пакетов (`conan upload`) в NORA v1.1.0 не реализована.
 
-#### Настройка удалённого репозитория
+> **Важно: клиент Conan 2.x НЕ может использовать NORA как Conan-прокси в v1.1.0.** Любой remote, указывающий на NORA, приводит к ошибке `error: b''` / "Unable to find ... in remotes". Подтверждено логами ingress-nginx: клиент Conan 2.31.1 отправляет **только** `GET /conan/v1/ping` (v1 API), NORA возвращает 404 (роутов `/conan/v1/*` нет), и Conan останавливается, не доходя до v2-эндпоинтов. Это поведение клиента Conan 2.x: первый запрос к remote — всегда v1 ping, и если он не 200, remote помечается недоступным.
+>
+> Не работает ни один из способов:
+> - `conan remote add nora https://$NORA_FQDN/conan` + `conan install --remote=nora` — v1 ping падает на 404.
+> - `conan remote update conancenter --url=https://$NORA_FQDN/conan` (подмена ConanCenter) — то же самое, v1 ping падает.
+> - Переменная окружения `CONAN_CENTER_URL` — **не существует** в Conan 2.31.1 (в коде клиента её нет, grep по `site-packages/conan/` — 0 совпадений); Conan её игнорирует.
+>
+> Способ установки Conan (`pipx install conan`, `pip install conan`, Docker-образ) не влияет — все дистрибутивы Conan 2.x используют v1 ping. Флага «только v2 API» в клиенте нет.
+>
+> Что РАБОТАЕТ: v2-эндпоинты NORA полностью функциональны через curl/HTTP-клиент (см. ниже). Чтобы клиент Conan 2.x заработал через NORA, NORA должна реализовать минимум `GET /conan/v1/ping` (вернуть 200 с capabilities) — этого в v1.1.0 нет.
+>
+> **Техническая причина v1 ping-барьера** (изучены исходники Conan 2.31.1, `site-packages/conan/`):
+> - `ClientV2Router.ping()` в `client_routes.py:29-31` явно возвращает URL `{root}/v1/ping` с комментарием `# FIXME: The v2 ping is not returning capabilities` — это **намеренный workaround Conan**: v2 ping не отдаёт заголовок `X-Conan-Server-Capabilities`, поэтому discovery всегда идёт через v1 ping.
+> - После успешного v1 ping Conan использует **только v2-эндпоинты** (search, recipe, package — все через `base_url = {root}/v2/`). V1 нужен исключительно ради ping.
+> - `server_capabilities()` в `rest_client_v2.py:126-141` требует заголовок `X-Conan-Server-Capabilities` в ответе ping. Нет заголовка → `ConanException "Remote doesn't seem like a valid Conan remote"`. Статус не 200 → `_raise_exception_from_error`.
+> - `_get_api()` в `rest_client.py:31-40` проверяет capability `revisions` (`internal/__init__.py:4`, `REVISIONS = "revisions"`); без неё → `"The remote doesn't support revisions. Conan 2.0 is no longer compatible with remotes that don't accept revisions."`
+> - **Минимум для поддержки клиента:** NORA должна реализовать `GET /conan/v1/ping` → 200 с заголовком `X-Conan-Server-Capabilities: revisions`. Этого достаточно — все остальные запросы Conan пойдут на уже реализованные v2-эндпоинты. Без этого эндпоинта Conan 2.x не может работать с NORA как с remote (на ноутбуке без интернета Conan не скачает пакеты через NORA — упадёт на v1 ping).
+>
+> Разделы про `conan remote add` и публикацию ниже оставлены для справки и будут актуальны, когда NORA добавит v1 ping и/или эндпоинт публикации.
+
+#### Проверка v2-эндпоинтов вручную (curl) — работает
+
+v2-эндпоинты NORA полностью функциональны (proxy/cache ConanCenter `center2.conan.io`). Подтверждено исходниками NORA (`nora-registry/src/registry/conan.rs`, `pub fn routes`): все 10 роутов — только `get` (ping, search, recipe/package file download, revisions, latest); v1-эндпоинтов (`/conan/v1/*`) в роутере нет, PUT/POST для публикации отсутствуют. Тесты через curl (Basic auth `token:nra_...`, все вернули HTTP 200):
+- `GET /conan/v2/ping` → 200
+- `GET /conan/v2/conans/search?q=zlib` → 200 (список версий zlib: 1.2.11, 1.2.12, 1.2.13, 1.3, 1.3.1, 1.3.2)
+- `GET /conan/v2/conans/zlib/1.3.1/_/_/latest` → 200 (revision `cac0f6daea041b0ccf42934163defb20`)
+- `GET /conan/v2/conans/zlib/1.3.1/_/_/revisions` → 200 (4 revision)
+- `GET /conan/v2/conans/zlib/1.3.1/_/_/revisions/{rrev}/files` → 200 (conanfile.py, conanmanifest.txt, conan_export.tgz, conan_sources.tgz)
+- `GET /conan/v2/conans/zlib/1.3.1/_/_/revisions/{rrev}/files/conanfile.py` → 200 (4160 байт, реальный conanfile.py)
+
+```bash
+# Ping
+curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" https://$NORA_FQDN/conan/v2/ping
+# HTTP 200
+
+# Поиск
+curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" \
+  "https://$NORA_FQDN/conan/v2/conans/search?q=zlib"
+# {"results":["zlib/1.2.11@_/_","zlib/1.3.1@_/_", ...]}
+
+# Последняя revision рецепта
+curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" \
+  https://$NORA_FQDN/conan/v2/conans/zlib/1.3.1/_/_/latest
+# {"revision":"cac0f6daea041b0ccf42934163defb20","time":"..."}
+
+# Список файлов рецепта
+curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" \
+  https://$NORA_FQDN/conan/v2/conans/zlib/1.3.1/_/_/revisions/cac0f6daea041b0ccf42934163defb20/files
+# {"files":{"conanfile.py":{},"conanmanifest.txt":{}, ...}}
+
+# Скачать conanfile.py
+curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" -o conanfile.py \
+  https://$NORA_FQDN/conan/v2/conans/zlib/1.3.1/_/_/revisions/cac0f6daea041b0ccf42934163defb20/files/conanfile.py
+# HTTP 200, 4160 байт
+```
+
+#### Настройка через conan remote (НЕ работает в NORA v1.1.0)
+
+> Способ оставлен для справки. В NORA v1.1.0 не работает — клиент Conan 2.x отправляет v1 ping, NORA его не реализует (см. предупреждение в начале раздела).
 
 ```bash
 # Добавляем NORA как удалённый репозиторий Conan
 conan remote add nora https://$NORA_FQDN/conan
 
-# Авторизация
-conan remote login nora -p nra_5d6640336f5a450cb17bc386404f1b47
-```
-
-Для постоянной настройки используйте `global.conf`:
-
-```ini
-# ~/.conan2/global.conf
-core.sources:download_cache=~/.conan2/download_cache
-```
-
-Или файл `remotes.json`:
-
-```json
-{
-  "remotes": [
-    {
-      "name": "nora",
-      "url": "https://$NORA_FQDN/conan",
-      "verify_ssl": true
-    }
-  ]
-}
-```
-
-#### Установка пакетов
-
-```bash
-# Установка пакета из NORA
-conan install zlib/1.3.1@ --remote=nora
-
-# Установка с зависимостями
-conan install . --remote=nora --output-folder=build
-
-# Установка с профилем
-conan install . --remote=nora -pr:h default -pr:b default
+# Авторизация (токен как пароль, любое имя пользователя)
+conan remote login nora token -p nra_5dc95b98dab14ad1b65e7050be550e25
 ```
 
 #### Публикация пакета
+
+> **Важно:** публикация пакетов (`conan upload`) в NORA v1.1.0 не реализована (в OpenAPI только GET-эндпоинты для `/conan/v2/*`). Раздел ниже оставлен для справки и будет актуален, когда NORA добавит эндпоинт публикации.
 
 Пример минимального тестового Conan-пакета:
 
@@ -1242,40 +1356,43 @@ const char* hello_nora() {
 EOF
 ```
 
-Сборка и публикация:
+Сборка и публикация (НЕ работает в NORA v1.1.0 — см. предупреждение выше):
 
 ```bash
 cd test-conan-pkg
 
-# Собираем пакет
-conan create . --remote=nora
+# Собираем пакет локально
+conan create .
 
-# Публикуем в NORA
+# Публикуем в NORA (не реализовано в NORA v1.1.0)
 conan upload test-conan-pkg/0.1.0 -r nora --confirm
 ```
 
 #### Использование в проекте
 
 ```bash
-# В conanfile.txt
+# conanfile.txt
 cat <<EOF >  conanfile.txt
 [requires]
 zlib/1.3.1
-test-conan-pkg/0.1.0
 
 [generators]
 CMakeToolchain
 CMakeDeps
 EOF
 
-conan install . --remote=nora --output-folder=build
+# Через CONAN_CENTER_URL (рабочий способ, см. начало раздела)
+export CONAN_CENTER_URL="https://$NORA_FQDN/conan"
+conan install . --output-folder=build --build=missing
 cmake --preset conan-release
 cmake --build build
 ```
 
 ### Pub (Dart/Flutter)
 
-NORA поддерживает pub.dev API — проксирует запросы к pub.dev и кэширует пакеты.
+NORA поддерживает pub.dev API — проксирует запросы к pub.dev и кэширует пакеты. Публикация пакетов (`dart pub publish`) в NORA v1.1.0 **не поддерживается** (отсутствует эндпоинт `GET /api/packages/versions/new`, возвращающий upload-URL); реестр работает только как зеркало pub.dev.
+
+> Pull-through протестирован: `dart pub get` через `PUB_HOSTED_URL=https://$NORA_FQDN/pub` успешно скачал `meta 1.19.0`. Подтверждено исходниками NORA (`nora-registry/src/registry/pub_dart.rs`, `pub fn routes`): все роуты — только `get` (`search_packages`, `package_advisories`, `version_metadata`, `package_listing`, `download_archive`); GET-эндпоинта `/api/packages/versions/new` (upload-URL) нет, POST/PUT отсутствуют.
 
 #### Настройка
 
@@ -1303,6 +1420,8 @@ flutter pub get
 ```
 
 #### Публикация пакета
+
+> **Важно:** публикация пакетов (`dart pub publish`) в NORA v1.1.0 не реализована (см. замечание в начале раздела). Раздел ниже оставлен для справки и будет актуален, когда NORA добавит эндпоинт публикации.
 
 Пример минимального тестового Dart-пакета:
 
@@ -1352,7 +1471,7 @@ EOF
 cd test-pub-pkg
 
 # Авторизация через токен (создаётся на pub.dev)
-export PUB_TOKEN=nra_5d6640336f5a450cb17bc386404f1b47
+export PUB_TOKEN=nra_5dc95b98dab14ad1b65e7050be550e25
 
 # Публикуем в NORA
 dart pub publish --server=https://$NORA_FQDN/pub
@@ -1382,6 +1501,8 @@ dart pub get
 
 NORA поддерживает хранение произвольных файлов — бинарников, архивов, конфигов, release-артефактов. Это hosted-only реестр: апстрим-проксирования нет, версионирования пакетов тоже нет — любой файл по любому пути.
 
+> Тестирование: PUT → 201, GET, HEAD, DELETE → 204, 409 на дубликат, `If-None-Match: *` → 412 create-only — всё работает. На S3-бэкене ETag не возвращается (см. ниже).
+
 #### Загрузка файла
 
 ```bash
@@ -1390,12 +1511,12 @@ curl -X PUT --data-binary @release.tar.gz \
   https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
 
 # С аутентификацией (токен как пароль, любое имя пользователя)
-curl -u "token:nra_5d6640336f5a450cb17bc386404f1b47" \
+curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" \
   -T release.tar.gz \
   https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
 
 # Или через Bearer
-curl -H "Authorization: Bearer nra_5d6640336f5a450cb17bc386404f1b47" \
+curl -H "Authorization: Bearer nra_5dc95b98dab14ad1b65e7050be550e25" \
   -X PUT --data-binary @release.tar.gz \
   https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
 ```
@@ -1408,22 +1529,24 @@ curl -O https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
 
 #### Условная перезапись (RFC 9110)
 
-Raw — единственный формат NORA с условными `PUT`: по умолчанию повторная загрузка в существующий путь возвращает **409 Conflict**. Чтобы перезаписать файл, используйте `If-Match` с ETag из HEAD, а для запрета перезаписи (create-only) — `If-None-Match: *`:
+Raw — единственный формат NORA с условными `PUT`: по умолчанию повторная загрузка в существующий путь возвращает **409 Conflict**. Для запрета перезаписи (create-only) используйте `If-None-Match: *` — упадёт **412 Precondition Failed**, если файл уже есть.
+
+> **Важно:** ETag для Raw возвращается только при включённом hash pin store, а он доступен только с local-бэкендом (`storage.mode: local`). На S3-бэкенде (`storage.mode: s3`, как в этом деплое) pin store отключён — `HEAD`/`PUT` для Raw **не возвращают `ETag`** (только `Last-Modified`), поэтому условная перезапись через `If-Match: "<etag>"` невозможна (`If-Match` с пустым/несуществующим ETag даёт **409 Conflict**). `If-None-Match: *` (create-only) работает на любом бэкенде. На local-бэкенде `If-Match` работает полностью.
+>
+> **Почему pin store отключён для S3** (архитектурное решение NORA, не баг): pin store — это append-only NDJSON-файл `.nora-pins.ndjson`, который хранится рядом с данными в local-бэкенде (`<storage.path>/.nora-pins.ndjson`). Для S3/GCS он отключён намеренно (storage/mod.rs:183, warning `Hash pin store disabled for S3 backend`): 1) append-only лог плохо ложится на object storage (нет атомарного append, compaction на старте); 2) без fsync-гарантий пин мог бы стать «надёжнее байтов, которые он пинит» — это хуже открытого состояния. Для S3 вместо пина используется streaming integrity verification — SHA-256 считается на лету при отдаче файла, но без ETag-заголовка. Это же ограничение упоминается в `nora mirror` (WARN `S3 target: at-rest hash pin unavailable — verify-before-commit closes TRANSFER, not at-rest, integrity`).
+>
+> **Зачем вообще ETag для Raw и почему берётся из pin store, а не считается на лету:** ETag нужен для двух сцениев — (1) условный GET (`If-None-Match` → `304 Not Modified`, экономия трафика при повторных чтениях) и (2) условная перезапись (`If-Match` → защита от lost-update, см. RFC 9110). Для маленьких тел NORA считает ETag на лету из SHA-256 тела (так работает Cargo sparse index — cargo_registry.rs:907, тело в памяти). Но Raw-файлы могут быть много-GB и отдаются стримом из S3 — держать всё тело в памяти для хеширования нельзя. Поэтому ETag для Raw берётся из предвычисленного pin store (SHA-256, записанный при PUT), а не считается на лету. Streaming integrity verification (VerifyingStream, raw.rs:104-150) считает хеш на лету при отдаче, но отдаёт его только в проверку — в заголовок ETag не может, потому что заголовки выставляются ДО тела, а хеш стрима известен только в конце. Поэтому на S3 (pin store отключён) ETag для Raw отсутствует, и оба сценария (304 и If-Match) недоступны. `If-None-Match: *` (create-only) работает — он не требует ETag.
 
 ```bash
-# Получаем ETag существующего файла
-curl -I https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
-# etag: "abc123..."
-
-# Перезапись только если ETag совпадает
-curl -X PUT -H 'If-Match: "abc123..."' \
-  --data-binary @release-1.1.tar.gz \
-  https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
-
 # Create-only: упадёт 412, если файл уже есть
 curl -X PUT -H 'If-None-Match: *' \
   --data-binary @release.tar.gz \
   https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
+
+# Когда NORA начнёт отдавать ETag — условная перезапись будет выглядеть так:
+# curl -I https://$NORA_FQDN/raw/builds/release-1.0.tar.gz   # получить etag
+# curl -X PUT -H 'If-Match: "<etag>"' --data-binary @release-1.1.tar.gz \
+#   https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
 ```
 
 #### Удаление и проверка существования
@@ -1450,7 +1573,7 @@ NORA поддерживает hosted RPM-репозитории с автома�
 
 ```bash
 # Публикуем .rpm в репозиторий myrepo (имя репо — любой путь /rpm/<name>/)
-curl -u "token:nra_5d6640336f5a450cb17bc386404f1b47" \
+curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" \
   -T myapp-1.0-1.x86_64.rpm \
   https://$NORA_FQDN/rpm/myrepo/myapp-1.0-1.x86_64.rpm
 ```
@@ -1522,12 +1645,12 @@ NORA поддерживает hosted APT-репозитории с сервер�
 
 ```bash
 # Flat — индексы в корне репо
-curl -u "token:nra_5d6640336f5a450cb17bc386404f1b47" \
+curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" \
   -T myapp_1.0_amd64.deb \
   https://$NORA_FQDN/deb/myrepo/myapp_1.0_amd64.deb
 
 # Structured —指定 distribution и component через query-параметры
-curl -u "token:nra_5d6640336f5a450cb17bc386404f1b47" \
+curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" \
   -T myapp_1.0_amd64.deb \
   "https://$NORA_FQDN/deb/myrepo/pool/main/m/myapp/myapp_1.0_amd64.deb?distribution=jammy&component=main"
 ```

@@ -56,3 +56,6 @@ test-cargo-pkg/*
 helm-values.yaml
 secret_for_bucket.yaml
 .npmrc
+
+# NORA upstream sources (separate project, not part of this repo)
+nora/
