@@ -1,8 +1,9 @@
 # Развёртывание инфраструктуры: Terraform + VLESS-прокси (mihomo)
 
-Этот файл описывает шаги 1–2 деплоя NORA в Kubernetes на Yandex Cloud:
-разворот инфраструктуры через Terraform и настройку VLESS-прокси (mihomo) для
-обхода гео-блокировки HashiCorp. Сама статья про NORA — в [README.md](README.md).
+Этот файл описывает шаги 1–3 деплоя NORA в Kubernetes на Yandex Cloud:
+разворот инфраструктуры через Terraform, настройку VLESS-прокси (mihomo) для
+обхода гео-блокировки HashiCorp и установку cert-manager для автоматического
+выпуска TLS-сертификатов. Сама статья про NORA — в [README.md](README.md).
 
 ## Шаг 1. Развёртывание инфраструктуры через Terraform
 
@@ -132,7 +133,7 @@ extraEnv:
 
 NORA (reqwest) подхватит env-прокси без изменений кода; в логе при старте появится `Outbound proxy detected from environment` (креды замаскируются).
 
-### Проверка (после установки NORA на шаге 3 в README.md)
+### Проверка (после установки NORA на шаге 2 в README.md)
 
 ```bash
 # Запрос к Terraform registry через NORA (reqwest внутри NORA использует HTTPS_PROXY) — должен вернуть 200
@@ -155,3 +156,61 @@ kubectl -n nora run curl-debug --rm -i --restart=Never \
 - Аутентификация на mixed-порту mihomo **не включена** — прокси маршрутизирует только terraform/hashicorp домены, остальное идёт напрямую, а доступ к Service ограничен NetworkPolicy.
 - NetworkPolicy ограничивает доступ только подами NORA — работает, если CNI поддерживает NetworkPolicy (Calico/Cilium); flannel его игнорирует. Обратите внимание: NetworkPolicy в `nora-vless-proxy.yaml` разрешает доступ только подам из namespace `nora` — так как NORA в этой статье ставится в `default`, политика её не пропустит; при необходимости добавьте `namespaceSelector`.
 - Если URL подписки сам заблокирован провайдером: скачайте подписку вручную, вставьте серверы в `proxies:` (формат clash) вместо `proxy-providers` и замените `use: [sub]` на имена/фильтр этих серверов в `proxy-groups`.
+
+## Шаг 3. cert-manager: автоматические TLS-сертификаты
+
+Для работы HTTPS с валидным TLS-сертификатом от Let's Encrypt нужен [cert-manager](https://cert-manager.io/). Он автоматически выпускает и обновляет сертификаты для Ingress-ресурсов.
+
+### Установка cert-manager
+
+```bash
+# Добавляем Helm-репозиторий
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+
+# Устанавливаем cert-manager с CRDs
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --set crds.enabled=true
+```
+
+Проверяем, что поды cert-manager запустились:
+
+```bash
+kubectl get pods -n cert-manager
+# cert-manager-xxx            1/1     Running
+# cert-manager-cainjector-xxx 1/1     Running
+# cert-manager-webhook-xxx    1/1     Running
+```
+
+### Создаём ClusterIssuer
+
+```bash
+cat <<EOF > cluster-issuer.yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@sslip.io
+    privateKeySecretRef:
+      name: letsencrypt-prod-key
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+EOF
+
+kubectl apply -f cluster-issuer.yaml
+```
+
+Проверяем:
+
+```bash
+kubectl get clusterissuer letsencrypt-prod
+# NAME               READY   AGE
+# letsencrypt-prod   True    10s
+```

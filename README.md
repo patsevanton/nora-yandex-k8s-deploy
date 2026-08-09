@@ -28,67 +28,9 @@ NORA уступает Nexus/Artifactory/Harbor по количеству под�
 - **Min Release Age** — карантин свежих пакетов
 - **CVE Blocking** — блокировка уязвимых пакетов по версии
 
-> Развёртывание инфраструктуры (Terraform-кластер Yandex Managed K8s + VLESS-прокси mihomo для обхода гео-блокировки HashiCorp) вынесено в отдельный файл: **[INFRASTRUCTURE.md](INFRASTRUCTURE.md)**. Выполните шаги 1–2 оттуда перед установкой cert-manager и NORA.
+> Предварительно требуется работающий кластер Kubernetes с установленным ingress-контроллером, cert-manager, настроенным доступом к S3-хранилищу и прокси-сервером для скачивания пакетов и образов из реестров, подверженных гео-ограничениям (например, Terraform Registry). Установите эти компоненты перед переходом к шагам 1–2 ниже.
 
-## Шаг 1. cert-manager: автоматические TLS-сертификаты
-
-Для работы HTTPS с валидным TLS-сертификатом от Let's Encrypt нужен [cert-manager](https://cert-manager.io/). Он автоматически выпускает и обновляет сертификаты для Ingress-ресурсов.
-
-### Установка cert-manager
-
-```bash
-# Добавляем Helm-репозиторий
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-
-# Устанавливаем cert-manager с CRDs
-helm install cert-manager jetstack/cert-manager \
-  --namespace cert-manager \
-  --create-namespace \
-  --set crds.enabled=true
-```
-
-Проверяем, что поды cert-manager запустились:
-
-```bash
-kubectl get pods -n cert-manager
-# cert-manager-xxx            1/1     Running
-# cert-manager-cainjector-xxx 1/1     Running
-# cert-manager-webhook-xxx    1/1     Running
-```
-
-### Создаём ClusterIssuer
-
-```bash
-cat <<EOF > cluster-issuer.yaml
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: letsencrypt-prod
-spec:
-  acme:
-    server: https://acme-v02.api.letsencrypt.org/directory
-    email: admin@sslip.io
-    privateKeySecretRef:
-      name: letsencrypt-prod-key
-    solvers:
-      - http01:
-          ingress:
-            class: nginx
-EOF
-
-kubectl apply -f cluster-issuer.yaml
-```
-
-Проверяем:
-
-```bash
-kubectl get clusterissuer letsencrypt-prod
-# NAME               READY   AGE
-# letsencrypt-prod   True    10s
-```
-
-## Шаг 2. Аутентификация
+## Шаг 1. Аутентификация
 
 По умолчанию NORA работает без аутентификации (анонимный доступ на чтение). Для включения авторизации выполните следующие шаги:
 
@@ -140,7 +82,7 @@ kubectl get secret nora-s3-credentials -o jsonpath='{.data.S3_ACCESS_KEY}' | bas
 kubectl get secret nora-s3-credentials -o jsonpath='{.data.S3_SECRET_KEY}' | base64 -d && echo
 ```
 
-## Шаг 3. Деплой NORA через Helm
+## Шаг 2. Деплой NORA через Helm
 
 Инфраструктура готова — кластер работает, ingress-nginx слушает на публичном IP, cert-manager выпустит TLS-сертификат автоматически. Теперь ставим NORA.
 
@@ -233,7 +175,7 @@ resources:
 - `config.storage.bucket` — имя S3-бакета
 - `config.storage.s3_region` — регион Yandex Cloud
 - `persistence.enabled: false` — PVC не нужен, данные хранятся в S3
-- `extraEnv` — credentials для S3 берутся из Kubernetes Secret `nora-s3-credentials` (создан на шаге 2)
+- `extraEnv` — credentials для S3 берутся из Kubernetes Secret `nora-s3-credentials` (создан на шаге 1)
 - `config.auth.enabled` — включает аутентификацию по htpasswd
 - `config.auth.htpasswd.existingSecret` — ссылка на Kubernetes Secret с htpasswd-файлом (chart сам монтирует его в контейнер)
 - `proxy-body-size: "0"` — снимает ограничение на размер тела запроса (нужно для больших Docker-образов)
