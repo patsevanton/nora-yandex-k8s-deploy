@@ -4,22 +4,22 @@
 
 Этот репозиторий разворачивает NORA (artifact registry на Rust) в Kubernetes на Yandex Cloud через Terraform + Helm. Подробное описание всех шагов и команд — в [README.md](README.md).
 
-## Развёртывание (шаги 1–5)
+## Развёртывание (шаги 1–3 в README + шаги 1–2 в INFRASTRUCTURE.md)
 
-После `terraform init && terraform apply` выполни шаги 2–5 из README.md по порядку:
-1. Получи доступ к кластеру: `yc managed-kubernetes cluster get-credentials --id $(terraform output -raw k8s_cluster_id) --external --force`
-2. Запроси подписку для VLESS-прокси (mihomo) для обхода гео-блокировки HashiCorp — манифест `nora-vless-proxy.yaml`
-3. cert-manager + ClusterIssuer `letsencrypt-prod`
-4. Аутентификация: `users.htpasswd` → Secret `nora-htpasswd`, плюс `secret_for_bucket.yaml` → Secret `nora-s3-credentials`
-5. Деплой NORA через Helm: `helm upgrade --install nora nora/nora --version 0.4.4 -f helm-values.yaml`
+Инфраструктурная часть — Terraform-кластер Yandex Managed K8s и VLESS-прокси mihomo для обхода гео-блокировки HashiCorp — вынесена в **[INFRASTRUCTURE.md](INFRASTRUCTURE.md)**. Перед установкой cert-manager и NORA выполни шаги 1–2 оттуда.
+
+После `terraform init && terraform apply` и настройки mihomo (INFRASTRUCTURE.md, шаги 1–2) выполни шаги 1–3 из README.md по порядку:
+1. cert-manager + ClusterIssuer `letsencrypt-prod`
+2. Аутентификация: `users.htpasswd` → Secret `nora-htpasswd`, плюс `secret_for_bucket.yaml` → Secret `nora-s3-credentials`
+3. Деплой NORA через Helm: `helm upgrade --install nora nora/nora --version 0.4.4 -f helm-values.yaml`
 
 После каждого шага проверяй статус подов, логи, ClusterIssuer/Certificate.
 
 ## Тестирование 15 форматов
 
-После выполнения шагов 1–5 и получения доступа к кластеру переходи к тестированию всех 15 форматов из раздела «Использование: примеры для каждого формата» в README.md. Порядок действий:
+После выполнения шагов 1–2 из INFRASTRUCTURE.md, шагов 1–3 из README.md и получения доступа к кластеру переходи к тестированию всех 15 форматов из раздела «Использование: примеры для каждого формата» в README.md. Порядок действий:
 
-1. **Пароль `your-password` — литерал.** В команде `htpasswd -Bbc users.htpasswd admin your-password` (шаг 4) и в запросе на создание токена пароль равен строке `your-password`. Воспринимай его буквально, не запрашивай у пользователя.
+1. **Пароль `your-password` — литерал.** В команде `htpasswd -Bbc users.htpasswd admin your-password` (шаг 2 в README.md) и в запросе на создание токена пароль равен строке `your-password`. Воспринимай его буквально, не запрашивай у пользователя.
 2. **Создай токен** командой из README:
    ```bash
    curl -X POST https://$NORA_FQDN/api/tokens \
