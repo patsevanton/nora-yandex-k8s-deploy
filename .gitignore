@@ -59,3 +59,14 @@ secret_for_bucket.yaml
 
 # NORA upstream sources (separate project, not part of this repo)
 nora/
+test-maven-pkg/pom.xml
+test-python-pkg/pyproject.toml
+test-python-pkg/src/test_python_pkg/__init__.py
+test-python-pkg/src/test_python_pkg.egg-info/dependency_links.txt
+test-python-pkg/src/test_python_pkg.egg-info/PKG-INFO
+test-python-pkg/src/test_python_pkg.egg-info/SOURCES.txt
+test-python-pkg/src/test_python_pkg.egg-info/top_level.txt
+test-python-pkg/src/test_python_pkg/__init__.py
+test-python-pkg/pyproject.toml
+test-maven-pkg/pom.xml
+nora-test-errors.log

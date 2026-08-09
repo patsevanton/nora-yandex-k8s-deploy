@@ -429,10 +429,10 @@ curl -X POST https://$NORA_FQDN/api/tokens \
     "ttl_days": 90,
     "description": "CI/CD pipeline token"
   }'
-# {"token": "nra_5dc95b98dab14ad1b65e7050be550e25...", "expires_in_days": 90}
+# {"token": "nra_13ef0a4c309d4750907648409f57a65c...", "expires_in_days": 90}
 
 # проверка токена
-curl -H "Authorization: Bearer nra_5dc95b98dab14ad1b65e7050be550e25" \
+curl -H "Authorization: Bearer nra_13ef0a4c309d4750907648409f57a65c" \
   https://$NORA_FQDN/v2/_catalog
 
 ```
@@ -512,7 +512,7 @@ config:
 
 ```bash
 # Docker login с токеном (токен в качестве пароля, любое имя пользователя)
-docker login $NORA_FQDN -u token -p nra_5dc95b98dab14ad1b65e7050be550e25
+docker login $NORA_FQDN -u token -p nra_13ef0a4c309d4750907648409f57a65c
 
 # Берём готовый публичный образ (или собираем свой из Dockerfile)
 docker pull nginx:alpine
@@ -531,7 +531,7 @@ NORA полностью совместима с Docker Registry v2 API, поэт
 
 ```bash
 # Использовать токен для npm
-npm config set //$NORA_FQDN:_authToken nra_5dc95b98dab14ad1b65e7050be550e25
+npm config set //$NORA_FQDN:_authToken nra_13ef0a4c309d4750907648409f57a65c
 
 # Настройка реестра для проекта
 npm config set registry https://$NORA_FQDN/npm/
@@ -565,7 +565,7 @@ EOF
 
 cd test-npm-pkg
 
-npm config set //$NORA_FQDN/npm/:_authToken nra_5dc95b98dab14ad1b65e7050be550e25
+npm config set //$NORA_FQDN/npm/:_authToken nra_13ef0a4c309d4750907648409f57a65c
 
 # Публикуем (запускается из директории test-npm-pkg)
 npm publish --registry https://$NORA_FQDN/npm/
@@ -608,7 +608,7 @@ source .venv/bin/activate
 python3 -m ensurepip --upgrade
 
 # Установка пакета через NORA (с токеном)
-python3 -m pip install --index-url https://token:nra_5dc95b98dab14ad1b65e7050be550e25@$NORA_FQDN/simple/ flask
+python3 -m pip install --index-url https://token:nra_13ef0a4c309d4750907648409f57a65c@$NORA_FQDN/simple/ flask
 ```
 
 Пример минимального Python-пакета для публикации:
@@ -628,7 +628,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install build twine
 python -m build
-twine upload --repository-url https://token:nra_5dc95b98dab14ad1b65e7050be550e25@$NORA_FQDN/simple/ dist/*
+twine upload --repository-url https://token:nra_13ef0a4c309d4750907648409f57a65c@$NORA_FQDN/simple/ dist/*
 ```
 
 Для постоянной настройки создайте `~/.pip/pip.conf`:
@@ -773,16 +773,16 @@ go mod init test-go-pkg
 
 ```bash
 # Глобально через go env (рекомендуется)
-go env -w GOPROXY=https://token:nra_5dc95b98dab14ad1b65e7050be550e25@$NORA_FQDN/go,direct
+go env -w GOPROXY=https://token:nra_13ef0a4c309d4750907648409f57a65c@$NORA_FQDN/go,direct
 
 # Или через переменную окружения
-export GOPROXY=https://token:nra_5dc95b98dab14ad1b65e7050be550e25@$NORA_FQDN/go,direct
+export GOPROXY=https://token:nra_13ef0a4c309d4750907648409f57a65c@$NORA_FQDN/go,direct
 ```
 
 **Вариант 2: Через .netrc (рекомендуется для CI/CD)**
 
 ```bash
-echo "machine $NORA_FQDN login token password nra_5dc95b98dab14ad1b65e7050be550e25" >> ~/.netrc
+echo "machine $NORA_FQDN login token password nra_13ef0a4c309d4750907648409f57a65c" >> ~/.netrc
 chmod 600 ~/.netrc
 
 go env -w GOPROXY=https://$NORA_FQDN/go,direct
@@ -832,10 +832,10 @@ EOF
 
 ```bash
 # Вариант 1: через stdin (рекомендуется для CI/CD)
-echo "Bearer nra_5dc95b98dab14ad1b65e7050be550e25" | cargo login --registry nora
+echo "Bearer nra_13ef0a4c309d4750907648409f57a65c" | cargo login --registry nora
 
 # Вариант 2: через переменную окружения
-export CARGO_REGISTRIES_NORA_TOKEN="Bearer nra_5dc95b98dab14ad1b65e7050be550e25"
+export CARGO_REGISTRIES_NORA_TOKEN="Bearer nra_13ef0a4c309d4750907648409f57a65c"
 ```
 
 > **Важно:** префикс `Bearer ` обязателен — без него Cargo выдаст ошибку `the token does not include an authentication scheme`.
@@ -931,7 +931,7 @@ bundle install
 
 ```bash
 # Авторизация (токен используется как пароль, любое имя пользователя)
-curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" \
+curl -u "token:nra_13ef0a4c309d4750907648409f57a65c" \
   https://$NORA_FQDN/api/v1/gems
 
 # Собираем гем из .gemspec
@@ -940,7 +940,7 @@ gem build mygem.gemspec
 # Публикуем
 gem push mygem-0.1.0.gem \
   --host https://$NORA_FQDN/gems/ \
-  --key nra_5dc95b98dab14ad1b65e7050be550e25
+  --key nra_13ef0a4c309d4750907648409f57a65c
 ```
 
 Пример минимального тестового гема:
@@ -1014,14 +1014,14 @@ NORA поддерживает NuGet V3 API — проксирует запрос
 dotnet nuget add source https://$NORA_FQDN/nuget/v3/index.json \
   -n nora \
   -u token \
-  -p nra_5dc95b98dab14ad1b65e7050be550e25 \
+  -p nra_13ef0a4c309d4750907648409f57a65c \
   --store-password-in-clear-text
 
 # Или через nuget CLI
 nuget source add -Name nora \
   -Source https://$NORA_FQDN/nuget/v3/index.json \
   -UserName token \
-  -Password nra_5dc95b98dab14ad1b65e7050be550e25
+  -Password nra_13ef0a4c309d4750907648409f57a65c
 ```
 
 Или через файл `nuget.config` в проекте:
@@ -1035,7 +1035,7 @@ nuget source add -Name nora \
   <packageSourceCredentials>
     <nora>
       <add key="Username" value="token" />
-      <add key="ClearTextPassword" value="nra_5dc95b98dab14ad1b65e7050be550e25" />
+      <add key="ClearTextPassword" value="nra_13ef0a4c309d4750907648409f57a65c" />
     </nora>
   </packageSourceCredentials>
 </configuration>
@@ -1092,7 +1092,7 @@ dotnet pack -c Release
 # Публикуем в NORA
 dotnet nuget push bin/Release/TestNugetPkg.0.1.0.nupkg \
   --source https://$NORA_FQDN/nuget/v3/index.json \
-  --api-key nra_5dc95b98dab14ad1b65e7050be550e25
+  --api-key nra_13ef0a4c309d4750907648409f57a65c
 ```
 
 #### Установка из NORA
@@ -1113,7 +1113,7 @@ NORA поддерживает Ansible Galaxy API — проксирует зап
 # Установка коллекции из NORA (с аутентификацией)
 ansible-galaxy collection install community.general \
   -s https://$NORA_FQDN/ansible/ \
-  --token nra_5dc95b98dab14ad1b65e7050be550e25
+  --token nra_13ef0a4c309d4750907648409f57a65c
 ```
 
 Для постоянной настройки добавьте сервер в `ansible.cfg`:
@@ -1124,7 +1124,7 @@ server_list = nora
 
 [galaxy_server.nora]
 url = https://$NORA_FQDN/ansible/
-token = nra_5dc95b98dab14ad1b65e7050be550e25
+token = nra_13ef0a4c309d4750907648409f57a65c
 ```
 
 После этого все команды `ansible-galaxy` будут использовать NORA:
@@ -1194,7 +1194,7 @@ ansible-galaxy collection build
 # Публикуем в NORA
 ansible-galaxy collection publish test-hello_nora-0.1.0.tar.gz \
   --server https://$NORA_FQDN/ansible/ \
-  --token nra_5dc95b98dab14ad1b65e7050be550e25
+  --token nra_13ef0a4c309d4750907648409f57a65c
 ```
 
 #### Публикация роли
@@ -1207,7 +1207,7 @@ cd test-hello-nora
 # Публикуем роль в NORA
 ansible-galaxy role import \
   --server https://$NORA_FQDN/ansible/ \
-  --token nra_5dc95b98dab14ad1b65e7050be550e25
+  --token nra_13ef0a4c309d4750907648409f57a65c
 ```
 
 ### Conan (C/C++)
@@ -1246,26 +1246,26 @@ v2-эндпоинты NORA полностью функциональны (proxy/
 
 ```bash
 # Ping
-curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" https://$NORA_FQDN/conan/v2/ping
+curl -u "token:nra_13ef0a4c309d4750907648409f57a65c" https://$NORA_FQDN/conan/v2/ping
 # HTTP 200
 
 # Поиск
-curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" \
+curl -u "token:nra_13ef0a4c309d4750907648409f57a65c" \
   "https://$NORA_FQDN/conan/v2/conans/search?q=zlib"
 # {"results":["zlib/1.2.11@_/_","zlib/1.3.1@_/_", ...]}
 
 # Последняя revision рецепта
-curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" \
+curl -u "token:nra_13ef0a4c309d4750907648409f57a65c" \
   https://$NORA_FQDN/conan/v2/conans/zlib/1.3.1/_/_/latest
 # {"revision":"cac0f6daea041b0ccf42934163defb20","time":"..."}
 
 # Список файлов рецепта
-curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" \
+curl -u "token:nra_13ef0a4c309d4750907648409f57a65c" \
   https://$NORA_FQDN/conan/v2/conans/zlib/1.3.1/_/_/revisions/cac0f6daea041b0ccf42934163defb20/files
 # {"files":{"conanfile.py":{},"conanmanifest.txt":{}, ...}}
 
 # Скачать conanfile.py
-curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" -o conanfile.py \
+curl -u "token:nra_13ef0a4c309d4750907648409f57a65c" -o conanfile.py \
   https://$NORA_FQDN/conan/v2/conans/zlib/1.3.1/_/_/revisions/cac0f6daea041b0ccf42934163defb20/files/conanfile.py
 # HTTP 200, 4160 байт
 ```
@@ -1279,7 +1279,7 @@ curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" -o conanfile.py \
 conan remote add nora https://$NORA_FQDN/conan
 
 # Авторизация (токен как пароль, любое имя пользователя)
-conan remote login nora token -p nra_5dc95b98dab14ad1b65e7050be550e25
+conan remote login nora token -p nra_13ef0a4c309d4750907648409f57a65c
 ```
 
 #### Публикация пакета
@@ -1471,7 +1471,7 @@ EOF
 cd test-pub-pkg
 
 # Авторизация через токен (создаётся на pub.dev)
-export PUB_TOKEN=nra_5dc95b98dab14ad1b65e7050be550e25
+export PUB_TOKEN=nra_13ef0a4c309d4750907648409f57a65c
 
 # Публикуем в NORA
 dart pub publish --server=https://$NORA_FQDN/pub
@@ -1511,12 +1511,12 @@ curl -X PUT --data-binary @release.tar.gz \
   https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
 
 # С аутентификацией (токен как пароль, любое имя пользователя)
-curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" \
+curl -u "token:nra_13ef0a4c309d4750907648409f57a65c" \
   -T release.tar.gz \
   https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
 
 # Или через Bearer
-curl -H "Authorization: Bearer nra_5dc95b98dab14ad1b65e7050be550e25" \
+curl -H "Authorization: Bearer nra_13ef0a4c309d4750907648409f57a65c" \
   -X PUT --data-binary @release.tar.gz \
   https://$NORA_FQDN/raw/builds/release-1.0.tar.gz
 ```
@@ -1573,7 +1573,7 @@ NORA поддерживает hosted RPM-репозитории с автома�
 
 ```bash
 # Публикуем .rpm в репозиторий myrepo (имя репо — любой путь /rpm/<name>/)
-curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" \
+curl -u "token:nra_13ef0a4c309d4750907648409f57a65c" \
   -T myapp-1.0-1.x86_64.rpm \
   https://$NORA_FQDN/rpm/myrepo/myapp-1.0-1.x86_64.rpm
 ```
@@ -1645,12 +1645,12 @@ NORA поддерживает hosted APT-репозитории с сервер�
 
 ```bash
 # Flat — индексы в корне репо
-curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" \
+curl -u "token:nra_13ef0a4c309d4750907648409f57a65c" \
   -T myapp_1.0_amd64.deb \
   https://$NORA_FQDN/deb/myrepo/myapp_1.0_amd64.deb
 
 # Structured —指定 distribution и component через query-параметры
-curl -u "token:nra_5dc95b98dab14ad1b65e7050be550e25" \
+curl -u "token:nra_13ef0a4c309d4750907648409f57a65c" \
   -T myapp_1.0_amd64.deb \
   "https://$NORA_FQDN/deb/myrepo/pool/main/m/myapp/myapp_1.0_amd64.deb?distribution=jammy&component=main"
 ```
