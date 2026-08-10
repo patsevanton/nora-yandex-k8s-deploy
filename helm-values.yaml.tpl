@@ -56,6 +56,8 @@ extraEnv:
     value: "127.0.0.1,localhost,.svc,.cluster.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
   - name: no_proxy
     value: "127.0.0.1,localhost,.svc,.cluster.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+  - name: NORA_TRUST_UPSTREAM_DATES
+    value: "true"
 
 resources:
   limits:
