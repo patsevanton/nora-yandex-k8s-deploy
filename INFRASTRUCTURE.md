@@ -24,7 +24,6 @@ cd nora-yandex-k8s-deploy
 
 # При необходимости укажите ID каталога (по умолчанию берётся из конфигурации yc):
 # cp terraform.tfvars.example terraform.tfvars
-# и заполните folder_id
 
 terraform init
 terraform apply

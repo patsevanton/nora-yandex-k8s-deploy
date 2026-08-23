@@ -1,10 +1,9 @@
 resource "yandex_iam_service_account" "sa_storage_admin" {
-  folder_id = local.folder_id
   name      = "sa-storage-admin"
 }
 
 resource "yandex_resourcemanager_folder_iam_member" "sa_storage_admin_permissions" {
-  folder_id = local.folder_id
+  folder_id = var.folder_id
   role      = "storage.admin"
   member    = "serviceAccount:${yandex_iam_service_account.sa_storage_admin.id}"
 }

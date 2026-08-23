@@ -1,10 +1,9 @@
 resource "yandex_iam_service_account" "sa_k8s_editor" {
-  folder_id = local.folder_id
   name      = "sa-k8s-editor"
 }
 
 resource "yandex_resourcemanager_folder_iam_member" "sa_k8s_editor_permissions" {
-  folder_id = local.folder_id
+  folder_id = var.folder_id
   role      = "editor"
   member    = "serviceAccount:${yandex_iam_service_account.sa_k8s_editor.id}"
 }
@@ -19,7 +18,6 @@ resource "time_sleep" "wait_sa" {
 
 resource "yandex_kubernetes_cluster" "nora" {
   name       = "nora"
-  folder_id  = local.folder_id
   network_id = local.network_id
 
   master {
