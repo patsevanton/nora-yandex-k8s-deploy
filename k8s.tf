@@ -1,5 +1,5 @@
 resource "yandex_iam_service_account" "sa_k8s_editor" {
-  name      = "sa-k8s-editor"
+  name = "sa-k8s-editor"
 }
 
 resource "yandex_resourcemanager_folder_iam_member" "sa_k8s_editor_permissions" {
@@ -22,9 +22,23 @@ resource "yandex_kubernetes_cluster" "nora" {
 
   master {
     version = "1.33"
-    zonal {
-      zone      = local.subnet_a_zone
-      subnet_id = local.subnet_a_id
+    regional {
+      region = "ru-central1"
+
+      location {
+        zone      = local.subnet_a_zone
+        subnet_id = local.subnet_a_id
+      }
+
+      location {
+        zone      = local.subnet_b_zone
+        subnet_id = local.subnet_b_id
+      }
+
+      location {
+        zone      = local.subnet_d_zone
+        subnet_id = local.subnet_d_id
+      }
     }
     public_ip = true
   }

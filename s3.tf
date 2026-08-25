@@ -1,5 +1,5 @@
 resource "yandex_iam_service_account" "sa_storage_admin" {
-  name      = "sa-storage-admin"
+  name = "sa-storage-admin"
 }
 
 resource "yandex_resourcemanager_folder_iam_member" "sa_storage_admin_permissions" {

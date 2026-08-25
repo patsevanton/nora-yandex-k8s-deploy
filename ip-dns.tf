@@ -1,5 +1,5 @@
 resource "yandex_vpc_address" "addr" {
-  name      = "nora-pip"
+  name = "nora-pip"
 
   external_ipv4_address {
     zone_id = local.subnet_a_zone
