@@ -189,6 +189,8 @@ open https://$NORA_FQDN/ui/
 
 После этого NORA доступна по адресу `https://$NORA_FQDN`. Web UI покажет dashboard с 15 реестрами.
 
+![NORA Dashboard](dashboard.png)
+
 ### Создание и использование токенов
 
 NORA использует API-токены с префиксом `nra_` вместо эндпоинта `/auth/token` (который есть в Docker Hub / GHCR, но отсутствует в NORA).
