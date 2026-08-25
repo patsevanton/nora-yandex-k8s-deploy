@@ -1,4 +1,4 @@
-# NORA: Разворачиваем свой artifact registry в Kubernetes на Yandex Cloud за 15 минут
+# NORA: Artifact registry с карантином свежих пакетов и блокировкой CVE
 
 ## Введение
 
