@@ -85,12 +85,6 @@ kubectl get secret nora-s3-credentials -o jsonpath='{.data.S3_SECRET_KEY}' | bas
 
 ## Шаг 2. Деплой NORA через Helm
 
-Инфраструктура готова — кластер работает, ingress-контроллер Traefik слушает на публичном IP, cert-manager выпустит TLS-сертификат автоматически. Теперь ставим NORA.
-
-### Домен через sslip.io — ничего вводить не нужно
-
-Домен формируется из публичного IP ingress-контроллера **автоматически**: Terraform уже подставил его в `helm-values.yaml` через шаблон `helm-values.yaml.tpl` при `terraform apply` (шаг 1 в [INFRASTRUCTURE.md](INFRASTRUCTURE.md)).
-
 ### Добавляем Helm-репозиторий
 
 ```bash
