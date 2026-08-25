@@ -285,7 +285,7 @@ config:
         debian: "https://deb.debian.org/debian"
 ```
 
-После этого `dnf install --enablerepo=nora-fedora vim` / `apt install vim` пойдёт через NORA (pull-through, immutable кэш). Проксированный репозиторий — read-only (запись вернёт 409).
+После этого `dnf install --enablerepo=nora-fedora vim` / `apt install vim` пойдёт через NORA (pull-through, immutable кэш).
 
 ### Docker
 
@@ -987,7 +987,7 @@ sudo dnf install myapp
 
 #### Pull-through проксирование апстрим-репозитория
 
-В `helm-values.yaml` можно настроить маппинг имени репо на апстрим (проксированный репо — read-only, запись вернёт 409):
+В `helm-values.yaml` можно настроить маппинг имени репо на апстрим:
 
 ```yaml
 config:
