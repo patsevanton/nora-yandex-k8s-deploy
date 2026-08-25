@@ -125,6 +125,7 @@ ingress:
       hosts:
         - ${fqdn}
 
+# Если используется S3, то выключаем локальный диск.
 persistence:
   enabled: false
 
@@ -166,20 +167,6 @@ resources:
     memory: 128Mi
     cpu: "0.25"
 ```
-
-Указываем только то, что отличается от дефолтов Nora:
-- `image.tag` — пин образа NORA v1.2.0 (чарт 0.4.4 ещё поставляет appVersion 1.1.0)
-- `config.server.public_url` — внешний URL, который NORA будет вставлять в download-ссылки (обязательно за reverse proxy)
-- `config.storage.mode` — режим хранения `s3` вместо `local`
-- `config.storage.s3_url` — эндпоинт Yandex Object Storage
-- `config.storage.bucket` — имя S3-бакета
-- `config.storage.s3_region` — регион Yandex Cloud
-- `persistence.enabled: false` — PVC не нужен, данные хранятся в S3
-- `extraEnv` — credentials для S3 берутся из Kubernetes Secret `nora-s3-credentials` (создан на шаге 1)
-- `config.auth.enabled` — включает аутентификацию по htpasswd
-- `config.auth.htpasswd.existingSecret` — ссылка на Kubernetes Secret с htpasswd-файлом (chart сам монтирует его в контейнер)
-- `cert-manager.io/cluster-issuer` — аннотация для автоматического выпуска TLS-сертификата через cert-manager
-- `tls` — конфигурация TLS с указанием Secret для сертификата
 
 ### Устанавливаем
 
