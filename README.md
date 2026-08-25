@@ -21,7 +21,7 @@
 | Количество форматов | 15 | 30+ | 30+ | Docker, OCI, Helm, CNAB |
 | S3-хранилище | Да | Нет | Нет | Да |
 | Лицензия | MIT | OSS | OSS | Apache 2.0 |
-| Ключевые особенности (бесплатные версии) | Бинарник на Rust, S3, карантин свежих пакетов, блокировка уязвимых пакетов по версиям — все функции бесплатны (MIT) | Web UI, REST API, hosted/proxy/group-репозитории, основные форматы (Docker, Maven, npm, PyPI, NuGet, raw и др.) | Maven, Gradle, Ivy и generic-репозитории, Web UI, REST API; Conan — в редакции CE для C/C++ | Docker/OCI реестр, Helm charts, сканирование CVE, репликация, RBAC, Web UI — все функции бесплатны (Apache 2.0) |
+| Ключевые особенности (бесплатные версии) | Бинарник на Rust, S3, карантин свежих пакетов, блокировка уязвимых пакетов по версиям | Web UI, REST API, hosted/proxy/group-репозитории, основные форматы (Docker, Maven, npm, PyPI, NuGet, raw и др.) | Maven, Gradle, Ivy и generic-репозитории, Web UI, REST API; Conan — в редакции CE для C/C++ | Docker/OCI реестр, Helm charts, сканирование CVE, репликация, RBAC, Web UI |
 
 NORA уступает Nexus/Artifactory/Harbor по количеству поддерживаемых форматов. Но для команд, которым нужен быстрый, лёгкий и бесплатный registry с основными форматами — это отличный выбор.
 
@@ -53,7 +53,7 @@ NORA поддерживает три роли: `read` (чтение), `write` (�
 
 ### Шаг 3. Применяем Kubernetes Secret для S3-хранилища
 
-На шаге 1 в [INFRASTRUCTURE.md](INFRASTRUCTURE.md) Terraform уже создал S3-бакет в Yandex Object Storage, сервисный аккаунт с правами `storage.admin` и сгенерировал файл `secret_for_bucket.yaml` из шаблона `secret_for_bucket.yaml.tpl` с реальными ключами доступа — ничего править руками не нужно. Файл выглядит примерно так (ключи подставлены автоматически):
+Нужно создать S3-бакет и создать файл `secret_for_bucket.yaml`. Файл выглядит примерно так:
 
 ```yaml
 apiVersion: v1
