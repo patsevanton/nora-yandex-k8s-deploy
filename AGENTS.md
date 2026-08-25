@@ -11,7 +11,7 @@
 После `terraform init && terraform apply` и настройки mihomo (INFRASTRUCTURE.md, шаги 1–2) выполни шаги 1–3 из README.md по порядку:
 1. cert-manager + ClusterIssuer `letsencrypt-prod`
 2. Аутентификация: `users.htpasswd` → Secret `nora-htpasswd`, плюс `secret_for_bucket.yaml` → Secret `nora-s3-credentials`
-3. Деплой NORA через Helm: `helm upgrade --install nora nora/nora --version 0.4.4 -f helm-values.yaml`
+3. Деплой NORA через Helm: `helm upgrade --install nora nora/nora --version 0.4.4 -f helm-values.yaml` (образ NORA v1.2.0 пинится через `image.tag` в values, т.к. чарт 0.4.4 имеет appVersion 1.1.0; когда выйдет чарт 0.4.5 — удалить пин и поднять `--version 0.4.5`)
 
 После каждого шага проверяй статус подов, логи, ClusterIssuer/Certificate.
 

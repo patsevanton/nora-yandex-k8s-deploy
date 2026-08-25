@@ -1,3 +1,8 @@
+image:
+  # NORA v1.2.0; чарт 0.4.4 ещё имеет appVersion 1.1.0, поэтому пиним тег вручную.
+  # Когда выйдет чарт 0.4.5 (appVersion 1.2.0), строку можно удалить.
+  tag: "1.2.0"
+
 ingress:
   enabled: true
   className: nginx
