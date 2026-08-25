@@ -10,6 +10,8 @@
 
 ## NORA vs Nexus vs Artifactory vs Harbor
 
+Сравниваются только бесплатные/свободные версии: NORA (MIT), Nexus Repository OSS, Artifactory OSS и Harbor (Apache 2.0).
+
 | Метрика | NORA | Nexus | JFrog Artifactory | Harbor |
 |---------|------|-------|-------------------|--------|
 | RAM (простой) | < 50 МБ | 2–4 ГБ | 2–4 ГБ | 2–4 ГБ |
@@ -17,14 +19,13 @@
 | Зависимости | Нет | Java 11+ | Java 11+ | Go, PostgreSQL, Redis |
 | База данных | Файловая система | OrientDB/PostgreSQL | OrientDB/PostgreSQL | PostgreSQL |
 | Количество форматов | 15 | 30+ | 30+ | Docker, OCI, Helm, CNAB |
-| S3-хранилище | Да | Платная версия | Платная версия | Да |
-| Цена | MIT, бесплатно | Community бесплатно | Community бесплатно | Apache 2.0, бесплатно |
-| Ключевые особенности (бесплатные версии) | Бинарник на Rust, S3, карантин свежих пакетов, блокировка уязвимых пакетов по версиям — все функции бесплатны (MIT) | Web UI, REST API, hosted/proxy/group-репозитории, основные форматы (Docker, Maven, npm, PyPI, NuGet, raw и др.); LDAP, репликация — платно (Pro) | Maven, Gradle, Ivy и generic-репозитории, Web UI, REST API (OSS); Conan — в редакции CE для C/C++; LDAP, репликация, Xray — платно | Docker/OCI реестр, Helm charts, сканирование CVE, репликация, RBAC, Web UI — все функции бесплатны (Apache 2.0) |
+| S3-хранилище | Да | Нет | Нет | Да |
+| Лицензия | MIT | OSS | OSS | Apache 2.0 |
+| Ключевые особенности (бесплатные версии) | Бинарник на Rust, S3, карантин свежих пакетов, блокировка уязвимых пакетов по версиям — все функции бесплатны (MIT) | Web UI, REST API, hosted/proxy/group-репозитории, основные форматы (Docker, Maven, npm, PyPI, NuGet, raw и др.) | Maven, Gradle, Ivy и generic-репозитории, Web UI, REST API; Conan — в редакции CE для C/C++ | Docker/OCI реестр, Helm charts, сканирование CVE, репликация, RBAC, Web UI — все функции бесплатны (Apache 2.0) |
 
-NORA уступает Nexus/Artifactory/Harbor по количеству поддерживаемых форматов и enterprise-фичам (LDAP, репликация, встроенное сканирование CVE). Но для команд, которым нужен быстрый, лёгкий и бесплатный registry с основными форматами — это отличный выбор.
+NORA уступает Nexus/Artifactory/Harbor по количеству поддерживаемых форматов. Но для команд, которым нужен быстрый, лёгкий и бесплатный registry с основными форматами — это отличный выбор.
 
 Отличительная особенность Nora это:
-
 - **Min Release Age** — карантин свежих пакетов
 - **CVE Blocking** — блокировка уязвимых пакетов по версии
 
