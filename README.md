@@ -226,8 +226,8 @@ NORA v1.2.0 поддерживает 15 форматов, но не для вс�
 | PyPI | ✅ | ✅ | hosted + proxy |
 | Maven | ✅ | ✅ | hosted + proxy |
 | Cargo | ✅ | ✅ | hosted + proxy (sparse index) |
-| Go | ✅ | — | proxy только (модули immutable, push не предусмотрен протоколом) |
-| Terraform | ✅ | — | proxy только (провайдеры скачиваются из апстрима) |
+| Go | ✅ | — | только proxy (модули immutable, push не предусмотрен протоколом) |
+| Terraform | ✅ | — | только proxy (провайдеры скачиваются из апстрима) |
 | Raw | ✅ | ✅ | hosted only, условные PUT (ETag/If-Match — только на local-бэкенде, см. раздел Raw) |
 | RPM | ✅ | ✅ | hosted + proxy, авто-генерация repodata |
 | Debian/APT | ✅ | ✅ | hosted + proxy, авто-генерация Packages/Release |
@@ -251,13 +251,13 @@ NORA v1.2.0 поддерживает 15 форматов, но не для вс�
 | PyPI | ✅ | `pypi.org/simple/` | index (TTL) + файлы (immutable) | hosted + proxy |
 | Maven | ✅ | `repo1.maven.org/maven2` | metadata (TTL) + артефакты (immutable) | hosted + proxy |
 | Cargo | ✅ | `crates.io` (sparse index) | index (TTL) + .crate (immutable) | hosted + proxy |
-| Go | ✅ | `proxy.golang.org` | @v/list,@latest (TTL) + .info/.mod/.zip (immutable) | proxy только |
-| Terraform | ✅ | `registry.terraform.io` | discovery (TTL) + провайдеры (immutable) | proxy только; требует `anonymous_read: true` |
-| RubyGems | ✅ | `rubygems.org` | specs/latest_specs/info (TTL) + gem/gemspec (immutable) | proxy только |
-| NuGet | ✅ | `api.nuget.org` | registration/query (TTL) + .nupkg/.nuspec (immutable) | proxy только |
-| Ansible Galaxy | ✅ | `galaxy.ansible.com` | collection list/detail (TTL) + tarball (immutable) | proxy только |
-| Pub (Dart) | ✅ | `pub.dev` | package metadata (TTL) + archive (immutable) | proxy только |
-| Conan | ✅* | `center2.conan.io` | revisions (TTL) + recipe/package files (immutable) | proxy только; v2 API + v1/ping (совместимость с клиентом Conan 2.x с NORA v1.2.0) |
+| Go | ✅ | `proxy.golang.org` | @v/list,@latest (TTL) + .info/.mod/.zip (immutable) | только proxy |
+| Terraform | ✅ | `registry.terraform.io` | discovery (TTL) + провайдеры (immutable) | только proxy; требует `anonymous_read: true` |
+| RubyGems | ✅ | `rubygems.org` | specs/latest_specs/info (TTL) + gem/gemspec (immutable) | только proxy |
+| NuGet | ✅ | `api.nuget.org` | registration/query (TTL) + .nupkg/.nuspec (immutable) | только proxy |
+| Ansible Galaxy | ✅ | `galaxy.ansible.com` | collection list/detail (TTL) + tarball (immutable) | только proxy |
+| Pub (Dart) | ✅ | `pub.dev` | package metadata (TTL) + archive (immutable) | только proxy |
+| Conan | ✅* | `center2.conan.io` | revisions (TTL) + recipe/package files (immutable) | только proxy; v2 API + v1/ping (совместимость с клиентом Conan 2.x с NORA v1.2.0) |
 | RPM | ✅* | — (нет по умолчанию) | пакеты (immutable) + repodata (регенерируется) | hosted; pull-through проксирование доступно через `config.registries.rpm.proxies` (например, `fedora: https://download.fedoraproject.org/...`), по умолчанию **выключено** |
 | Debian/APT | ✅* | — (нет по умолчанию) | пакеты (immutable) + Packages/Release (регенерируется) | hosted; pull-through через `config.registries.deb.proxies` (например, `debian: https://deb.debian.org/debian`), по умолчанию **выключено** |
 | Raw | ❌ | — (нет апстрима) | — | **hosted only** — апстрим-проксирования нет по дизайну (любой файл по любому пути); кэшировать нечего |
