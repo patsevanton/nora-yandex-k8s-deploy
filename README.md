@@ -993,8 +993,6 @@ ansible-galaxy role import \
 
 NORA реализует Conan V2 API (`/conan/v2/*`) — проксирует запросы к ConanCenter (`center2.conan.io`) и кэширует пакеты. Публикация пакетов (`conan upload`) в NORA v1.2.0 не реализована.
 
-> **Клиент Conan 2.x работает с NORA начиная с v1.2.0.** В v1.1.0 существовал v1 ping-барьер: клиент Conan 2.x первым запросом к remote отправлял `GET /conan/v1/ping` (v1 API), NORA возвращала 404, и Conan помечал remote недоступным (`error: b''` / "Unable to find ... in remotes"). В v1.2.0 (PR [#901](https://github.com/getnora-io/nora/pull/901)) эндпоинт `GET /conan/v1/ping` реализован — возвращает 200 с заголовком `X-Conan-Server-Capabilities: revisions`, чего достаточно клиенту Conan 2.x для работы. Все остальные запросы клиент выполняет на v2-эндпоинты.
-
 #### Настройка через conan remote (работает с NORA v1.2.0)
 
 ```bash
@@ -1050,111 +1048,6 @@ curl -u "token:nra_13ef0a4c309d4750907648409f57a65c" -o conanfile.py \
 # HTTP 200, 4160 байт
 ```
 
-#### Публикация пакета
-
-> **Важно:** публикация пакетов (`conan upload`) в NORA v1.2.0 не реализована (в OpenAPI только GET-эндпоинты для `/conan/v2/*`). Раздел ниже оставлен для справки и будет актуален, когда NORA добавит эндпоинт публикации.
-
-Пример минимального тестового Conan-пакета:
-
-```
-test-conan-pkg/
-├── conanfile.py
-├── src/
-│   └── hello.cpp
-└── CMakeLists.txt
-```
-
-```bash
-mkdir -p test-conan-pkg/src
-
-cat <<EOF >  test-conan-pkg/conanfile.py
-from conan import ConanFile
-from conan.tools.cmake import CMake, cmake_layout
-from conan.tools.files import copy
-import os
-
-class TestConanPkg(ConanFile):
-    name = "test-conan-pkg"
-    version = "0.1.0"
-    license = "MIT"
-    description = "Test Conan package for NORA registry"
-    settings = "os", "compiler", "build_type", "arch"
-    generators = "CMakeToolchain", "CMakeDeps"
-    exports_sources = "src/*", "CMakeLists.txt"
-
-    def layout(self):
-        cmake_layout(self)
-
-    def build(self):
-        cmake = CMake(self)
-        cmake.configure()
-        cmake.build()
-
-    def package(self):
-        cmake = CMake(self)
-        cmake.install()
-
-    def package_info(self):
-        self.cpp_info.libs = ["test-conan-pkg"]
-EOF
-
-cat <<EOF >  test-conan-pkg/CMakeLists.txt
-cmake_minimum_required(VERSION 3.15)
-project(test-conan-pkg CXX)
-
-add_library(test-conan-pkg src/hello.cpp)
-target_include_directories(test-conan-pkg PUBLIC include)
-
-install(TARGETS test-conan-pkg DESTINATION lib)
-install(FILES include/hello.h DESTINATION include)
-EOF
-
-mkdir -p test-conan-pkg/include
-cat <<EOF >  test-conan-pkg/include/hello.h
-#pragma once
-const char* hello_nora();
-EOF
-
-cat <<EOF >  test-conan-pkg/src/hello.cpp
-#include "hello.h"
-
-const char* hello_nora() {
-    return "Hello from NORA!";
-}
-EOF
-```
-
-Сборка и публикация (НЕ работает в NORA v1.2.0 — см. предупреждение выше):
-
-```bash
-cd test-conan-pkg
-
-# Собираем пакет локально
-conan create .
-
-# Публикуем в NORA (не реализовано в NORA v1.2.0)
-conan upload test-conan-pkg/0.1.0 -r nora --confirm
-```
-
-#### Использование в проекте
-
-```bash
-# conanfile.txt
-cat <<EOF >  conanfile.txt
-[requires]
-zlib/1.3.1
-
-[generators]
-CMakeToolchain
-CMakeDeps
-EOF
-
-# Через настроенный remote nora (рабочий способ с NORA v1.2.0, см. начало раздела)
-conan install . -r nora --output-folder=build --build=missing
-cmake --preset conan-release
-cmake --build build
-```
-
 ### Pub (Dart/Flutter)
 
 NORA поддерживает pub.dev API — проксирует запросы к pub.dev и кэширует пакеты. Публикация пакетов (`dart pub publish`) в NORA v1.2.0 **не поддерживается** (отсутствует эндпоинт `GET /api/packages/versions/new`, возвращающий upload-URL); реестр работает только как зеркало pub.dev.
@@ -1184,84 +1077,6 @@ dart pub get
 
 # Или для Flutter
 flutter pub get
-```
-
-#### Публикация пакета
-
-> **Важно:** публикация пакетов (`dart pub publish`) в NORA v1.2.0 не реализована (см. замечание в начале раздела). Раздел ниже оставлен для справки и будет актуален, когда NORA добавит эндпоинт публикации.
-
-Пример минимального тестового Dart-пакета:
-
-```
-test-pub-pkg/
-├── pubspec.yaml
-├── lib/
-│   └── test_pub_pkg.dart
-├��─ example/
-│   └── test_pub_pkg_example.dart
-└── README.md
-```
-
-```bash
-mkdir -p test-pub-pkg/lib test-pub-pkg/example
-
-cat <<EOF >  test-pub-pkg/pubspec.yaml
-name: test_pub_pkg
-description: Test Dart package for NORA registry
-version: 0.1.0
-homepage: https://$NORA_FQDN
-
-environment:
-  sdk: ">=3.0.0 <4.0.0"
-EOF
-
-cat <<EOF >  test-pub-pkg/lib/test_pub_pkg.dart
-library test_pub_pkg;
-
-String hello() {
-  return "Hello from NORA!";
-}
-EOF
-
-cat <<EOF >  test-pub-pkg/example/test_pub_pkg_example.dart
-import 'package:test_pub_pkg/test_pub_pkg.dart';
-
-void main() {
-  print(hello());
-}
-EOF
-```
-
-Публикация:
-
-```bash
-cd test-pub-pkg
-
-# Авторизация через токен (создаётся на pub.dev)
-export PUB_TOKEN=nra_13ef0a4c309d4750907648409f57a65c
-
-# Публикуем в NORA
-dart pub publish --server=https://$NORA_FQDN/pub
-
-# Или для Flutter
-flutter pub publish --server=https://$NORA_FQDN/pub
-```
-
-#### Использование в проекте
-
-```yaml
-# pubspec.yaml
-name: my_app
-environment:
-  sdk: ">=3.0.0 <4.0.0"
-
-dependencies:
-  test_pub_pkg: ^0.1.0
-```
-
-```bash
-# С PUB_HOSTED_URL зависимости тянутся из NORA
-dart pub get
 ```
 
 ### Raw (произвольные файлы)
