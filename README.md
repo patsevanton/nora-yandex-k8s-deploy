@@ -102,7 +102,7 @@ helm search repo nora/nora --versions
 
 ### values-файл генерируется автоматически
 
-Файл `helm-values.yaml` создаётся Terraform из шаблона `helm-values.yaml.tpl` с уже подставленным доменом — редактировать его руками не нужно. Для справки его содержимое:
+Примерное содержимое `helm-values.yaml`:
 
 ```yaml
 image:
