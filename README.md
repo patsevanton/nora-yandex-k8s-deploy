@@ -1,4 +1,4 @@
-# NORA: Artifact registry с карантином свежих пакетов и блокировкой CVE
+# NORA: лёгкий artifact registry для Kubernetes с карантином свежих пакетов и блокировкой CVE
 
 ## Введение
 
