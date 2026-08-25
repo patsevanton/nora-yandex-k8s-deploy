@@ -826,54 +826,6 @@ nuget source add -Name nora \
 dotnet restore
 ```
 
-#### Публикация пакета
-
-> **Важно:** публикация NuGet-пакетов (`dotnet nuget push`) в NORA v1.2.0 не реализована (см. замечание в начале раздела). Раздел ниже оставлен для справки и будет актуален, когда NORA добавит эндпоинт публикации.
-
-Пример минимального тестового NuGet-пакета:
-
-```
-test-nuget-pkg/
-├── TestNugetPkg.csproj
-└── Class1.cs
-```
-
-```bash
-mkdir -p test-nuget-pkg
-cat <<EOF >  test-nuget-pkg/TestNugetPkg.csproj
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <PackageId>TestNugetPkg</PackageId>
-    <Version>0.1.0</Version>
-    <Authors>Test</Authors>
-    <Description>Test NuGet package for NORA registry</Description>
-  </PropertyGroup>
-</Project>
-EOF
-
-cat <<EOF >  test-nuget-pkg/Class1.cs
-namespace TestNugetPkg;
-
-public static class Hello
-{
-    public static string Greet() => "Hello from NORA!";
-}
-EOF
-```
-
-```bash
-cd test-nuget-pkg
-
-# Собираем пакет
-dotnet pack -c Release
-
-# Публикуем в NORA
-dotnet nuget push bin/Release/TestNugetPkg.0.1.0.nupkg \
-  --source https://$NORA_FQDN/nuget/v3/index.json \
-  --api-key nra_13ef0a4c309d4750907648409f57a65c
-```
-
 #### Установка из NORA
 
 ```bash
