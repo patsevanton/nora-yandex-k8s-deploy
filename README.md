@@ -6,7 +6,7 @@
 
 [NORA](https://github.com/getnora-io/nora) — open-source реестр артефактов на Rust, созданный как прямая альтернатива этим гигантам. Вместо Java-стека — один бинарник < 27 МБ. Вместо 2–4 ГБ RAM — < 50 МБ в простое, т.е. на порядок меньше. Вместо десятков минут на старт — 3 секунды. Внешних зависимостей нет вообще: ни Java 11+, ни отдельной СУБД — метаданные хранятся на файловой системе, а артефакты сразу можно отправлять в S3, чего бесплатные версии Nexus и Artifactory не умеют. При этом поддерживается 15 форматов: Docker, Maven, npm, PyPI, Cargo, Go, Raw, RubyGems, Terraform, Ansible Galaxy, NuGet, Pub (Dart/Flutter), Conan (C/C++), RPM (yum/dnf), Debian/APT. Плюс Helm-чарты через OCI, карантин свежих пакетов (Min Release Age), блокировка уязвимых версий (CVE Blocking) и лицензия MIT.
 
-В этой статье мы развернём NORA в Kubernetes на Yandex Managed Kubernetes с помощью Terraform и Helm, настроим ingress-контроллер Traefik, выпустим TLS-сертификат через cert-manager, а затем попробуем все основные сценарии использования.
+В этой статье мы развернём NORA в Kubernetes на Yandex Managed Kubernetes, а затем попробуем все основные сценарии использования.
 
 ## NORA vs Nexus vs Artifactory vs Harbor
 
