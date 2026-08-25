@@ -241,7 +241,7 @@ NORA v1.2.0 поддерживает 15 форматов, но не для вс�
 
 ### Кэширование 15 форматов
 
-Не все 15 форматов кэшируют апстрим. NORA разделяет реестры на **proxy/cache** (кешируют пакеты/метаданные из апстрима) и **hosted-only** (только локальные пакеты, апстрима нет). Сводка по умолчанию (без явной настройки `proxies` в `helm-values.yaml`):
+Из 15 форматов только Raw не имеет апстрима — это hosted-only реестр (только локальные пакеты). Остальные 14 работают как **proxy/cache**: кэшируют пакеты/метаданные из апстрима. Сводка по умолчанию (без явной настройки `proxies` в `helm-values.yaml`):
 
 | Формат | Кэширует апстрим | Апстрим по умолчанию | Тип кэша | Примечание |
 |---|:---:|---|---|---|
@@ -262,7 +262,7 @@ NORA v1.2.0 поддерживает 15 форматов, но не для вс�
 | Debian/APT | ✅* | — (нет по умолчанию) | пакеты (immutable) + Packages/Release (регенерируется) | hosted; pull-through через `config.registries.deb.proxies` (например, `debian: https://deb.debian.org/debian`), по умолчанию **выключено** |
 | Raw | ❌ | — (нет апстрима) | — | **hosted only** — апстрим-проксирования нет по дизайну (любой файл по любому пути); кэшировать нечего |
 
-**Итого: 13 из 15 форматов кэшируют апстрим из коробки** (Docker, Helm OCI, npm, PyPI, Maven, Cargo, Go, Terraform, RubyGems, NuGet, Ansible, Pub, Conan). RPM и Debian/APT поддерживают pull-through проксирование, но по умолчанию работают как hosted-only — нужно явно прописать `config.registries.rpm.proxies` / `config.registries.deb.proxies` в `helm-values.yaml`. Raw не кэширует ничего — это hosted-only реестр для произвольных файлов.
+**Итого: только Raw не имеет апстрима** — остальные 14 форматов поддерживают кэширование апстрима (Docker, Helm OCI, npm, PyPI, Maven, Cargo, Go, Terraform, RubyGems, NuGet, Ansible, Pub, Conan кэшируют из коробки; RPM и Debian/APT — через pull-through, который по умолчанию выключен и включается явно через `config.registries.rpm.proxies` / `config.registries.deb.proxies` в `helm-values.yaml`).
 
 Типы кэша:
 - **immutable** — пакет/артефакт кэшируется навсегда после первого скачивания (content-addressed, не меняется). Это основная защита от rate-limit и блокировок апстрима.
