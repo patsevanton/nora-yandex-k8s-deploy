@@ -1162,7 +1162,7 @@ nora mirror rpm --repo myrepo --arch x86_64,noarch \
 
 #### Замечания
 
-- RPM отключён по умолчанию, но включается через `registries.enable: "all"` (уже стоит в `helm-values.yaml.tpl`).
+- RPM отключён по умолчанию, но включается через `registries.enable: "all"`.
 - SQLite-метаданные (`*_db`), delta-RPM и module metadata (`modules.yaml`) не генерируются — только XML.
 - Каждый `/rpm/{repo}/` — независимый репозиторий.
 
