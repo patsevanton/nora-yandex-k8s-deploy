@@ -191,8 +191,6 @@ resources:
 - `cert-manager.io/cluster-issuer` — аннотация для автоматического выпуска TLS-сертификата через cert-manager
 - `tls` — конфигурация TLS с указанием Secret для сертификата
 
-Таймауты и размер загрузок: Traefik (в отличие от nginx) не ограничивает размер тела запроса, а увеличенные таймауты для больших загрузок уже заданы в values чарта Traefik на шаге 1 в [INFRASTRUCTURE.md](INFRASTRUCTURE.md) (`ports.*.transport.respondingTimeouts`) — аннотации на Ingress не нужны.
-
 ### Устанавливаем
 
 ```bash
@@ -283,8 +281,8 @@ NORA v1.2.0 поддерживает 15 форматов, но не для вс�
 | Ansible Galaxy | ✅ | `galaxy.ansible.com` | collection list/detail (TTL) + tarball (immutable) | proxy только |
 | Pub (Dart) | ✅ | `pub.dev` | package metadata (TTL) + archive (immutable) | proxy только |
 | Conan | ✅* | `center2.conan.io` | revisions (TTL) + recipe/package files (immutable) | proxy только; v2 API + v1/ping (совместимость с клиентом Conan 2.x с NORA v1.2.0) |
-| RPM | ⚠️ | — (нет по умолчанию) | пакеты (immutable) + repodata (регенерируется) | hosted; pull-through проксирование доступно через `config.registries.rpm.proxies` (например, `fedora: https://download.fedoraproject.org/...`), по умолчанию **выключено** |
-| Debian/APT | ⚠️ | — (нет по умолчанию) | пакеты (immutable) + Packages/Release (регенерируется) | hosted; pull-through через `config.registries.deb.proxies` (например, `debian: https://deb.debian.org/debian`), по умолчанию **выключено** |
+| RPM | ✅* | — (нет по умолчанию) | пакеты (immutable) + repodata (регенерируется) | hosted; pull-through проксирование доступно через `config.registries.rpm.proxies` (например, `fedora: https://download.fedoraproject.org/...`), по умолчанию **выключено** |
+| Debian/APT | ✅* | — (нет по умолчанию) | пакеты (immutable) + Packages/Release (регенерируется) | hosted; pull-through через `config.registries.deb.proxies` (например, `debian: https://deb.debian.org/debian`), по умолчанию **выключено** |
 | Raw | ❌ | — (нет апстрима) | — | **hosted only** — апстрим-проксирования нет по дизайну (любой файл по любому пути); кэшировать нечего |
 
 **Итого: 13 из 15 форматов кэшируют апстрим из коробки** (Docker, Helm OCI, npm, PyPI, Maven, Cargo, Go, Terraform, RubyGems, NuGet, Ansible, Pub, Conan). RPM и Debian/APT поддерживают pull-through проксирование, но по умолчанию работают как hosted-only — нужно явно прописать `config.registries.rpm.proxies` / `config.registries.deb.proxies` в `helm-values.yaml`. Raw не кэширует ничего — это hosted-only реестр для произвольных файлов.
