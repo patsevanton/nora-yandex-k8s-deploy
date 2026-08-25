@@ -157,16 +157,6 @@ extraEnv:
       secretKeyRef:
         name: nora-s3-credentials
         key: S3_SECRET_KEY
-  - name: HTTPS_PROXY
-    value: "http://mihomo-proxy.nora.svc.cluster.local:1080"
-  - name: https_proxy
-    value: "http://mihomo-proxy.nora.svc.cluster.local:1080"
-  - name: NO_PROXY
-    value: "127.0.0.1,localhost,.svc,.cluster.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
-  - name: no_proxy
-    value: "127.0.0.1,localhost,.svc,.cluster.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
-  - name: NORA_TRUST_UPSTREAM_DATES
-    value: "true"
 
 resources:
   limits:
