@@ -118,6 +118,10 @@ resource "helm_release" "traefik" {
 
   values = [
     yamlencode({
+      image = {
+        registry   = "ghcr.io"
+        repository = "traefik/traefik"
+      }
       service = {
         spec = {
           type           = "LoadBalancer"
