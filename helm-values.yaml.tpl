@@ -5,16 +5,13 @@ image:
 
 ingress:
   enabled: true
-  className: nginx
+  className: traefik
   hosts:
     - host: ${fqdn}
       paths:
         - path: /
           pathType: Prefix
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "0"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
     cert-manager.io/cluster-issuer: letsencrypt-prod
   tls:
     - secretName: nora-tls

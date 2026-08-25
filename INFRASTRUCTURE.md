@@ -7,7 +7,7 @@
 
 ## Шаг 1. Развёртывание инфраструктуры через Terraform
 
-Перед установкой cert-manager и NORA нужно развернуть инфраструктуру. Terraform создаёт кластер Kubernetes, статический публичный IP, S3-бакет и устанавливает ingress-nginx, а также генерирует из шаблонов файлы `helm-values.yaml` (с подставленным доменом) и `secret_for_bucket.yaml` (с ключами доступа к S3).
+Перед установкой cert-manager и NORA нужно развернуть инфраструктуру. Terraform создаёт кластер Kubernetes, статический публичный IP, S3-бакет и устанавливает ingress-контроллер Traefik, а также генерирует из шаблонов файлы `helm-values.yaml` (с подставленным доменом) и `secret_for_bucket.yaml` (с ключами доступа к S3).
 
 ### Требования
 
@@ -200,7 +200,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            class: traefik
 EOF
 
 kubectl apply -f cluster-issuer.yaml

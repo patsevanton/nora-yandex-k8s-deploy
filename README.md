@@ -6,7 +6,7 @@
 
 [NORA](https://github.com/getnora-io/nora) — open-source реестр артефактов на Rust. Один бинарник < 27 МБ, < 50 МБ RAM в простое, старт за 3 секунды. Поддерживает 15 форматов: Docker, Maven, npm, PyPI, Cargo, Go, Raw, RubyGems, Terraform, Ansible Galaxy, NuGet, Pub (Dart/Flutter), Conan (C/C++), RPM (yum/dnf), Debian/APT. Плюс Helm-чарты через OCI.
 
-В этой статье мы развернём NORA в Kubernetes на Yandex Managed Kubernetes с помощью Terraform и Helm, настроим ingress-nginx, выпустим TLS-сертификат через cert-manager, а затем попробуем все основные сценарии использования.
+В этой статье мы развернём NORA в Kubernetes на Yandex Managed Kubernetes с помощью Terraform и Helm, настроим ingress-контроллер Traefik, выпустим TLS-сертификат через cert-manager, а затем попробуем все основные сценарии использования.
 
 ## NORA vs Nexus vs Artifactory vs Harbor
 
@@ -85,7 +85,7 @@ kubectl get secret nora-s3-credentials -o jsonpath='{.data.S3_SECRET_KEY}' | bas
 
 ## Шаг 2. Деплой NORA через Helm
 
-Инфраструктура готова — кластер работает, ingress-nginx слушает на публичном IP, cert-manager выпустит TLS-сертификат автоматически. Теперь ставим NORA.
+Инфраструктура готова — кластер работает, ingress-контроллер Traefik слушает на публичном IP, cert-manager выпустит TLS-сертификат автоматически. Теперь ставим NORA.
 
 ### Домен через sslip.io — ничего вводить не нужно
 
@@ -118,16 +118,13 @@ image:
 
 ingress:
   enabled: true
-  className: nginx
+  className: traefik
   hosts:
     - host: ${fqdn}
       paths:
         - path: /
           pathType: Prefix
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "0"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
     cert-manager.io/cluster-issuer: letsencrypt-prod
   tls:
     - secretName: nora-tls
@@ -197,10 +194,10 @@ resources:
 - `extraEnv` — credentials для S3 берутся из Kubernetes Secret `nora-s3-credentials` (создан на шаге 1)
 - `config.auth.enabled` — включает аутентификацию по htpasswd
 - `config.auth.htpasswd.existingSecret` — ссылка на Kubernetes Secret с htpasswd-файлом (chart сам монтирует его в контейнер)
-- `proxy-body-size: "0"` — снимает ограничение на размер тела запроса (нужно для больших Docker-образов)
-- `proxy-read-timeout: "600"` — увеличенный таймаут для больших загрузок
 - `cert-manager.io/cluster-issuer` — аннотация для автоматического выпуска TLS-сертификата через cert-manager
 - `tls` — конфигурация TLS с указанием Secret для сертификата
+
+Таймауты и размер загрузок: Traefik (в отличие от nginx) не ограничивает размер тела запроса, а увеличенные таймауты для больших загрузок уже заданы в values чарта Traefik на шаге 1 в [INFRASTRUCTURE.md](INFRASTRUCTURE.md) (`ports.*.transport.respondingTimeouts`) — аннотации на Ingress не нужны.
 
 ### Устанавливаем
 
@@ -1681,16 +1678,13 @@ Chart сам создаёт volume и volumeMount, а также выставл�
 ```yaml
 ingress:
   enabled: true
-  className: nginx
+  className: traefik
   hosts:
     - host: ${fqdn}
       paths:
         - path: /
           pathType: Prefix
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "0"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
     cert-manager.io/cluster-issuer: letsencrypt-prod
   tls:
     - secretName: nora-tls
@@ -1898,9 +1892,9 @@ kubectl describe order
 - Убедиться, что DNS-запись `$NORA_FQDN` резолвится на правильный IP ingress-контроллера (sslip.io делает это автоматически, но стоит проверить, что в домен подставлен верный IP):
   ```bash
   dig $NORA_FQDN +short
-  kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+  kubectl get svc -n traefik traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
   ```
-- Если cert-manager не может достучаться до `/.well-known/acme-challenge/` — проверить, что ingress-nginx работает и нет конфликтов Ingress-правил
+- Если cert-manager не может достучаться до `/.well-known/acme-challenge/` — проверить, что Traefik работает и нет конфликтов Ingress-правил
 
 ### 3. Docker push / pull не работает
 
@@ -1913,16 +1907,16 @@ kubectl get ingress
 kubectl describe ingress nora
 ```
 
-Убедитесь, что `proxy-body-size` не ограничивает размер образа (в values стоит `"0"` — без ограничения).
+Убедитесь, что таймауты Traefik (`ports.*.transport.respondingTimeouts` в values чарта Traefik, шаг 1 в [INFRASTRUCTURE.md](INFRASTRUCTURE.md)) не обрывают большие загрузки. Лимита на размер тела запроса у Traefik нет.
 
 ### 4. cert-manager: как это работает
 
-1. Ingress-nginx создаётся с аннотацией `cert-manager.io/cluster-issuer`
+1. Ingress NORA создаётся с аннотацией `cert-manager.io/cluster-issuer`
 2. cert-manager видит аннотацию и создаёт Certificate-ресурс
 3. Certificate → CertificateRequest → Order → Challenge
-4. Let's Encrypt проверяет доступ к `/.well-known/acme-challenge/` через ingress-nginx
+4. Let's Encrypt проверяет доступ к `/.well-known/acme-challenge/` через Traefik
 5. cert-manager получает сертификат и сохраняет его в Secret `nora-tls`
-6. ingress-nginx использует этот Secret для TLS-терминации
+6. Traefik использует этот Secret для TLS-терминации
 
 ## Заключение
 

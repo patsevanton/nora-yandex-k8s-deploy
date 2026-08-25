@@ -89,12 +89,13 @@ provider "helm" {
   }
 }
 
-resource "helm_release" "ingress_nginx" {
-  name             = "ingress-nginx"
-  chart            = "ingress-nginx"
-  repository       = "https://kubernetes.github.io/ingress-nginx"
-  namespace        = "ingress-nginx"
+resource "helm_release" "traefik" {
+  name             = "traefik"
+  chart            = "traefik"
+  repository       = "https://traefik.github.io/charts"
+  namespace        = "traefik"
   create_namespace = true
+  version          = "41.3.0"
 
   depends_on = [
     yandex_kubernetes_cluster.nora,
@@ -103,10 +104,31 @@ resource "helm_release" "ingress_nginx" {
 
   values = [
     yamlencode({
-      controller = {
-        service = {
+      service = {
+        spec = {
           type           = "LoadBalancer"
           loadBalancerIP = local.ingress_ip
+        }
+      }
+      # Таймауты для больших загрузок (docker push и т.п.).
+      # Аналог proxy-read/send-timeout у nginx; writeTimeout: 0s — без ограничения,
+      # чтобы большие скачивания не обрывались. Лимита на размер тела у Traefik нет.
+      ports = {
+        web = {
+          transport = {
+            respondingTimeouts = {
+              readTimeout  = "600s"
+              writeTimeout = "0s"
+            }
+          }
+        }
+        websecure = {
+          transport = {
+            respondingTimeouts = {
+              readTimeout  = "600s"
+              writeTimeout = "0s"
+            }
+          }
         }
       }
     })
