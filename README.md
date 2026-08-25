@@ -398,7 +398,7 @@ test-python-pkg/
 ├── src/
 │   └── test_python_pkg/
 │       └── __init__.py
-└── dist/                # создаётся автоматически при python -m build
+└── dist/
 ```
 
 ```bash
@@ -430,7 +430,7 @@ test-maven-pkg/
 └── src/main/java/com/example/HelloNora.java
 ```
 
-Создайте `pom.xml` с описанием артефакта и адресом репозитория (кавычки в `'EOF'` не используем — так shell подставит `$NORA_FQDN` в файл автоматически):
+Создайте `pom.xml` с описанием артефакта и адресом репозитория:
 
 ```bash
 cat <<EOF >  test-maven-pkg/pom.xml
