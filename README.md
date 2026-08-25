@@ -1443,66 +1443,6 @@ yc storage bucket update nora-storage-anton-patsev --versioning enabled
 yc storage s3 cp s3://nora-storage-anton-patsev s3://nora-backup-$(date +%Y%m%d) --recursive
 ```
 
-## Trouleshooting
-
-### 1. NORA не стартует / под в CrashLoopBackOff
-
-```bash
-kubectl logs deploy/nora
-kubectl describe pod -l app.kubernetes.io/name=nora
-```
-
-Проверьте, что Secret `nora-s3-credentials` существует: `kubectl get secret nora-s3-credentials`.
-Проверьте, что S3-бакет доступен: `yc storage bucket list`.
-
-### 2. TLS-сертификат не выпускается (NET::ERR_CERT_AUTHORITY_INVALID)
-
-**Симптом:** браузер показывает «Ваше подключение не защищено» / `NET::ERR_CERT_AUTHORITY_INVALID`.
-
-**Причина:** cert-manager ещё не выпустил сертификат или Challenge не прошёл.
-
-```bash
-kubectl get certificates
-kubectl describe certificate nora-tls
-kubectl get challenges
-kubectl describe challenge
-kubectl get orders
-kubectl describe order
-```
-
-**Решения:**
-- Подождать 1–5 минут — Let's Encrypt ACME HTTP-01 challenge требует времени
-- Проверить, что ClusterIssuer в статусе Ready: `kubectl get clusterissuer letsencrypt-prod`
-- Проверить логи cert-manager: `kubectl logs -n cert-manager deploy/cert-manager`
-- Убедиться, что DNS-запись `$NORA_FQDN` резолвится на правильный IP ingress-контроллера (sslip.io делает это автоматически, но стоит проверить, что в домен подставлен верный IP):
-  ```bash
-  dig $NORA_FQDN +short
-  kubectl get svc -n traefik traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
-  ```
-- Если cert-manager не может достучаться до `/.well-known/acme-challenge/` — проверить, что Traefik работает и нет конфликтов Ingress-правил
-
-### 3. Docker push / pull не работает
-
-```bash
-# Проверяем, что NORA отвечает
-curl https://$NORA_FQDN/v2/
-
-# Проверяем ingress
-kubectl get ingress
-kubectl describe ingress nora
-```
-
-Убедитесь, что таймауты Traefik (`ports.*.transport.respondingTimeouts` в values чарта Traefik, шаг 1 в [INFRASTRUCTURE.md](INFRASTRUCTURE.md)) не обрывают большие загрузки. Лимита на размер тела запроса у Traefik нет.
-
-### 4. cert-manager: как это работает
-
-1. Ingress NORA создаётся с аннотацией `cert-manager.io/cluster-issuer`
-2. cert-manager видит аннотацию и создаёт Certificate-ресурс
-3. Certificate → CertificateRequest → Order → Challenge
-4. Let's Encrypt проверяет доступ к `/.well-known/acme-challenge/` через Traefik
-5. cert-manager получает сертификат и сохраняет его в Secret `nora-tls`
-6. Traefik использует этот Secret для TLS-терминации
-
 ## Заключение
 
 NORA — это современная альтернатива Nexus, Artifactory и Harbor для команд, которым не нужен enterprise-overhead. Ключевые преимущества:
@@ -1513,7 +1453,7 @@ NORA — это современная альтернатива Nexus, Artifacto
 - **Безопасность** — OpenSSF Scorecard, подписанные релизы, SBOM, 1200+ тестов, блокировка свежих пакетов (min-release-age), CVE blocklist, digest quarantine, namespace isolation.
 - **Air-gapped ready** — встроенное зеркалирование для изолированных сред.
 
-Репозиторий с Terraform-кодом для этой статьи: [github.com/patsevanton/nora-habr](https://github.com/patsevanton/nora-habr)
+Репозиторий с Terraform-кодом для этой статьи: [github.com/patsevanton/nora-yandex-k8s-deploy](https://github.com/patsevanton/nora-yandex-k8s-deploy)
 
 - GitHub: [github.com/getnora-io/nora](https://github.com/getnora-io/nora)
 - Документация: [getnora.dev](https://getnora.dev)
